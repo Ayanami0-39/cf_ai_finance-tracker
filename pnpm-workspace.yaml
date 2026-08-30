@@ -1,3 +1,14 @@
+packages:
+  # 空列表：单包项目，仅为兼容 pnpm 10 的必填字段
+  - .
+
+# pnpm 10 字段：允许列表形式的构建脚本审批
+onlyBuiltDependencies:
+  - esbuild
+  - sharp
+  - workerd
+
+# pnpm 11 字段：映射形式的构建脚本审批
 allowBuilds:
   esbuild: true
   sharp: true
