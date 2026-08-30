@@ -1,4 +1,4 @@
-import { getExpenseEntryPrompt, SYSTEM_MESSAGE, AI_CONFIG, type ExpenseCategory } from './prompts/expense-entry';
+import { getExpenseEntryPrompt, SYSTEM_MESSAGE, AI_CONFIG, EXPENSE_CATEGORIES, type ExpenseCategory } from './prompts/expense-entry';
 
 export interface ProcessedExpense {
   amount: number;
@@ -41,20 +41,33 @@ export async function processExpenseInput(
         temperature: AI_CONFIG.temperature,
         max_tokens: AI_CONFIG.max_tokens
       }
-    ) as { response?: string; result?: { response?: string } } | string;
+    ) as Record<string, unknown>;
 
+    // 兼容多种返回形态：
+    // 1. string：旧版直接返回文本
+    // 2. { response: string }：Workers AI 常规格式
+    // 3. { result: { response: string } }：部分模型包装格式
+    // 4. { choices: [{ message: { content: string } }] }：OpenAI 兼容格式
     let aiText = '';
-
     if (typeof response === 'string') {
       aiText = response;
-    } else if (response.response) {
+    } else if (typeof response.response === 'string') {
       aiText = response.response;
-    } else if (response.result?.response) {
-      aiText = response.result.response;
+    } else if (
+      typeof response.result === 'object' && response.result !== null &&
+      typeof (response.result as Record<string, unknown>).response === 'string'
+    ) {
+      aiText = (response.result as Record<string, unknown>).response as string;
+    } else if (Array.isArray(response.choices) && response.choices.length > 0) {
+      const first = response.choices[0] as Record<string, unknown>;
+      const message = first.message as Record<string, unknown> | undefined;
+      if (message && typeof message.content === 'string') {
+        aiText = message.content;
+      }
     }
 
     if (!aiText) {
-      console.error('[parse-expense] AI returned empty output, fallback to regex. input:', input);
+      console.error('[parse-expense] AI returned empty output, fallback to regex. input:', input, 'rawResponse:', JSON.stringify(response).slice(0, 500));
       return fallbackParsing(input);
     }
 
@@ -65,12 +78,8 @@ export async function processExpenseInput(
       return fallbackParsing(input);
     }
 
-    if (
-      !parsed.amount ||
-      typeof parsed.category !== 'string' ||
-      typeof parsed.message !== 'string'
-    ) {
-      console.error('[parse-expense] AI JSON missing required fields, fallback to regex. input:', input, 'parsed:', JSON.stringify(parsed).slice(0, 500));
+    if (!isValidExpenseJson(parsed)) {
+      console.error('[parse-expense] AI JSON missing required fields or invalid category, fallback to regex. input:', input, 'parsed:', JSON.stringify(parsed).slice(0, 500));
       return fallbackParsing(input);
     }
 
@@ -107,16 +116,60 @@ export async function processExpenseInput(
 const DATE_CLUE_RE =
   /今天|昨天|前天|大前天|\d+\s*天前|[周星期][一二三四五六日天末]|\d{4}[-/.年]|\d{1,2}\s*月|\d{1,2}\s*[日号]|\d{1,2}[-/]\d{1,2}(?!\d)/;
 
-/** 从 AI 输出中稳健提取 JSON：兼容 markdown 代码块、前后缀文字、嵌套对象 */
+/** 从 AI 输出中稳健提取 JSON：兼容 markdown 代码块、前后缀文字、嵌套对象、截断输出修复 */
 function extractJson(text: string): Record<string, unknown> | null {
   const candidates: string[] = [];
+
+  // 剥离 markdown 代码块围栏（```json ... ``` / ``` ... ```）
   const fence = text.match(/```(?:json)?\s*([\s\S]*?)```/);
-  if (fence?.[1]) candidates.push(fence[1]);
+  if (fence?.[1]) candidates.push(fence[1].trim());
+
+  // 完整对象：第一个 { 到最后一个 }（前后有说明文字也能取出）
   const first = text.indexOf('{');
   const last = text.lastIndexOf('}');
   if (first !== -1 && last > first) candidates.push(text.slice(first, last + 1));
-  const short = text.match(/\{[\s\S]*?\}/);
-  if (short) candidates.push(short[0]);
+
+  // 逐层截取：从每个 { 起，按大括号配对截取，兼容嵌套对象被外层文字干扰的情况
+  let pos = text.indexOf('{');
+  while (pos !== -1) {
+    let depth = 0;
+    let inString = false;
+    let escaped = false;
+    for (let i = pos; i < text.length; i++) {
+      const ch = text[i];
+      if (escaped) { escaped = false; continue; }
+      if (ch === '\\') { escaped = true; continue; }
+      if (ch === '"') inString = !inString;
+      if (inString) continue;
+      if (ch === '{') depth++;
+      else if (ch === '}') {
+        depth--;
+        if (depth === 0) {
+          candidates.push(text.slice(pos, i + 1));
+          break;
+        }
+      }
+    }
+    pos = text.indexOf('{', pos + 1);
+  }
+
+  // 截断修复：JSON 被 max_tokens 截断时缺右括号/引号，尝试补全
+  const truncStart = text.indexOf('{');
+  if (truncStart !== -1 && truncStart < text.length - 1) {
+    let t = text.slice(truncStart).trim();
+    // 去掉残缺的尾部（未闭合的键名前缀、悬空逗号）
+    t = t.replace(/,\s*"[^"]*"?\s*:?\s*$/, '').replace(/,\s*$/, '');
+    if (!t.endsWith('}')) {
+      // 未闭合的字符串先补引号
+      const quotes = (t.match(/"/g) || []).length;
+      if (quotes % 2 === 1) t += '"';
+      // 尾部若为 "key": 悬空，去掉
+      t = t.replace(/"[^"]*"\s*:\s*$/, '').replace(/,\s*$/, '');
+      t += '}';
+    }
+    candidates.push(t);
+  }
+
   for (const c of candidates) {
     try {
       const obj = JSON.parse(c);
@@ -126,6 +179,15 @@ function extractJson(text: string): Record<string, unknown> | null {
     }
   }
   return null;
+}
+
+/** 校验提取结果是否为有效的记账对象（字段类型 + 类目白名单），防小模型幻觉字段 */
+function isValidExpenseJson(parsed: Record<string, unknown>): boolean {
+  if (!parsed.amount || typeof parsed.category !== 'string' || typeof parsed.message !== 'string') {
+    return false;
+  }
+  const category = parsed.category;
+  return category === 'Income' || (EXPENSE_CATEGORIES as readonly string[]).includes(category);
 }
 
 // Chinese numeral words → number, e.g. "三十五" → 35, "一百二" → 120, "两百五" → 250

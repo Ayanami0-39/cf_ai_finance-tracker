@@ -113,20 +113,22 @@ Output: { "type": "income", "amount": 200, "merchant": "红包", "category": "In
 Input: "打车去机场花了45"
 Output: { "type": "expense", "amount": 45, "merchant": "打车", "category": "Transportation", "message": "机场行程已记录，打车 45 元。" }
 
-OUTPUT FORMAT (JSON only, no explanation, no markdown):
+OUTPUT FORMAT (CRITICAL - your ENTIRE response is machine-parsed as JSON):
 {
   "type": "<expense|income>",
   "amount": <number>,
   "merchant": "<string>",
   "category": "<category or Income>",
   "date": "<YYYY-MM-DD, only when the user mentioned a date>",
-  "message": "<natural confirmation in user's language>"
+  "message": "<natural confirmation in user's language, under 60 chars>"
 }
 
 CRITICAL:
-1. Respond ONLY with the JSON object
-2. No explanation, no markdown code blocks, just pure JSON
-3. VARY your response style - don't be repetitive!`;
+1. Your ENTIRE response must be ONE raw JSON object: the first character is { and the last character is }
+2. NO markdown code blocks (never use ```), NO explanation, NO text before or after the JSON
+3. Field names and string values use double quotes; "amount" is a bare number (35, never "35元")
+4. Keep "message" short (1-2 sentences)
+5. VARY your response style - don't be repetitive!`;
 }
 
 export const SYSTEM_MESSAGE = `You are a bilingual financial assistant. You understand Chinese and English naturally, and reply in the user's language. You sound like a helpful friend, not a robot. Keep responses brief, casual, and varied.`;
@@ -134,5 +136,5 @@ export const SYSTEM_MESSAGE = `You are a bilingual financial assistant. You unde
 export const AI_CONFIG = {
   model: '@cf/meta/llama-3.1-8b-instruct',
   temperature: 0.3,
-  max_tokens: 400
+  max_tokens: 4000
 } as const;
