@@ -1,4 +1,5 @@
 import type { VoiceCommandResponse, ExpenseResponse, ChatResponse, Message } from '@/types';
+import { accountHeaders } from '@/lib/account';
 
 const API_BASE = import.meta.env.VITE_API_URL || '/api';
 
@@ -124,104 +125,95 @@ export const api = {
     }
   },
 
-  // ---- Family ----
-
-  async createFamily(payload: {
-    userId: string;
-    members: Array<{ id: string; name: string; emoji: string }>;
-    expenses?: unknown[];
-    chatMessages?: unknown[];
-  }): Promise<{
-    success: boolean;
-    code?: string;
-    scopeId?: string;
-    importedExpenses?: number;
-    importedChat?: number;
-    error?: string;
-  }> {
-    const response = await fetch(`${API_BASE}/family/create`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...authHeaders() },
-      body: JSON.stringify(payload),
-    });
-    return response.json();
-  },
-
-  async joinFamily(payload: {
-    code: string;
-    members: Array<{ id: string; name: string; emoji: string }>;
-    expenses?: unknown[];
-    chatMessages?: unknown[];
-  }): Promise<{
-    success: boolean;
-    code?: string;
-    scopeId?: string;
-    importedExpenses?: number;
-    importedChat?: number;
-    error?: string;
-  }> {
-    const response = await fetch(`${API_BASE}/family/join`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...authHeaders() },
-      body: JSON.stringify(payload),
-    });
-    return response.json();
-  },
-
-  async getFamilyMembers(scopeId: string): Promise<{
-    success: boolean;
-    members: Array<{ id: string; name: string; emoji: string }>;
-    ownerId?: string | null;
-  }> {
-    const response = await fetch(`${API_BASE}/family/${scopeId}/members`, {
-      headers: authHeaders(),
-    });
-    if (!response.ok) {
-      throw new Error('Failed to fetch family members');
-    }
-    return response.json();
-  },
-
-  async removeFamilyMember(
-    scopeId: string,
-    memberId: string,
-    operatorId: string
-  ): Promise<{
-    success: boolean;
-    members?: Array<{ id: string; name: string; emoji: string }>;
-    error?: string;
-  }> {
-    const response = await fetch(`${API_BASE}/family/${scopeId}/members/${memberId}`, {
-      method: 'DELETE',
-      headers: { 'Content-Type': 'application/json', ...authHeaders() },
-      body: JSON.stringify({ operatorId }),
-    });
-    return response.json();
-  },
-
   async mergeIdentity(
     sourceScopeId: string,
     targetScopeId: string
   ): Promise<{ success: boolean; importedExpenses?: number; importedChat?: number }> {
     const response = await fetch(`${API_BASE}/identity/merge`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      headers: { 'Content-Type': 'application/json', ...accountHeaders() },
       body: JSON.stringify({ sourceScopeId, targetScopeId }),
     });
     return response.json();
   },
 
-  async syncMemberProfile(
-    scopeId: string,
-    member: { id: string; name: string; emoji: string }
-  ): Promise<{
+  // ---- Family（账号制） ----
+
+  async createFamily(): Promise<{
     success: boolean;
-    members?: Array<{ id: string; name: string; emoji: string }>;
+    family?: { code: string; scopeId: string; isOwner: boolean };
+    importedExpenses?: number;
+    importedChat?: number;
+    error?: string;
   }> {
-    const response = await fetch(`${API_BASE}/family/${scopeId}/members`, {
+    const response = await fetch(`${API_BASE}/family/create`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...authHeaders() },
-      body: JSON.stringify(member),
+      headers: { 'Content-Type': 'application/json', ...accountHeaders() },
+      body: JSON.stringify({ mergePersonalData: true }),
+    });
+    return response.json();
+  },
+
+  async joinFamily(code: string): Promise<{
+    success: boolean;
+    family?: { code: string; scopeId: string; isOwner: boolean };
+    importedExpenses?: number;
+    importedChat?: number;
+    error?: string;
+  }> {
+    const response = await fetch(`${API_BASE}/family/join`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...accountHeaders() },
+      body: JSON.stringify({ code, mergePersonalData: true }),
+    });
+    return response.json();
+  },
+
+  async getMyFamily(): Promise<{
+    success: boolean;
+    family: { code: string; scopeId: string; isOwner: boolean } | null;
+    members: Array<{ username: string; displayName: string; emoji: string; isOwner: boolean }>;
+    error?: string;
+  }> {
+    const response = await fetch(`${API_BASE}/family/mine`, {
+      headers: accountHeaders(),
+    });
+    return response.json();
+  },
+
+  async removeFamilyMember(
+    username: string
+  ): Promise<{ success: boolean; error?: string }> {
+    const response = await fetch(
+      `${API_BASE}/family/members/${encodeURIComponent(username)}`,
+      { method: 'DELETE', headers: accountHeaders() }
+    );
+    return response.json();
+  },
+
+  async leaveFamily(): Promise<{
+    success: boolean;
+    dissolved?: boolean;
+    newOwner?: string | null;
+    error?: string;
+  }> {
+    const response = await fetch(`${API_BASE}/family/leave`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...accountHeaders() },
+      body: JSON.stringify({}),
+    });
+    return response.json();
+  },
+
+  async regenerateFamilyCode(): Promise<{
+    success: boolean;
+    family?: { code: string; scopeId: string; isOwner: boolean };
+    error?: string;
+  }> {
+    const response = await fetch(`${API_BASE}/family/regenerate-code`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...accountHeaders() },
+      body: JSON.stringify({}),
     });
     return response.json();
   },

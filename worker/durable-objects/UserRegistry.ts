@@ -16,6 +16,15 @@ export interface AccountRecord {
   createdAt: number;
 }
 
+export interface FamilyRecord {
+  code: string; // 6 位家庭码
+  scopeId: string; // 共享数据作用域 family_{code}
+  ownerId: string; // 创建者 scopeId（user_xxx）
+  ownerUsername: string;
+  memberUsernames: string[]; // 小写用户名，按加入顺序
+  createdAt: number;
+}
+
 export class UserRegistry extends DurableObject {
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -113,6 +122,238 @@ export class UserRegistry extends DurableObject {
     map[key] = account;
     await this.saveAccounts(map);
     return { ok: true };
+  }
+
+  // ==================== 家庭注册表 ====================
+
+  private familiesKey = 'families'; // Record<code, FamilyRecord>
+  private membershipKey = 'membership'; // Record<usernameLower, code>
+
+  private async families(): Promise<Record<string, FamilyRecord>> {
+    return (await this.ctx.storage.get<Record<string, FamilyRecord>>(this.familiesKey)) || {};
+  }
+
+  private async saveFamilies(map: Record<string, FamilyRecord>): Promise<void> {
+    await this.ctx.storage.put(this.familiesKey, map);
+  }
+
+  private async memberships(): Promise<Record<string, string>> {
+    return (await this.ctx.storage.get<Record<string, string>>(this.membershipKey)) || {};
+  }
+
+  private async saveMemberships(map: Record<string, string>): Promise<void> {
+    await this.ctx.storage.put(this.membershipKey, map);
+  }
+
+  /** 生成不重复的 6 位家庭码（排除易混淆的 0/1） */
+  private async genFamilyCode(): Promise<string> {
+    const digits = '23456789';
+    const map = await this.families();
+    for (let attempt = 0; attempt < 50; attempt++) {
+      let code = '';
+      for (let i = 0; i < 6; i++) {
+        code += digits[Math.floor(Math.random() * digits.length)];
+      }
+      if (!map[code]) return code;
+    }
+    throw new Error('无法生成家庭码，请重试');
+  }
+
+  /** 家庭成员的实时资料（从账号表读取，改名/换头像自动生效；创建者排最前） */
+  private resolveMembers(family: FamilyRecord, accounts: Record<string, AccountRecord>) {
+    return family.memberUsernames
+      .map((u) => {
+        const a = accounts[u];
+        return a
+          ? {
+              username: a.username,
+              displayName: a.displayName,
+              emoji: a.emoji,
+              isOwner: u === family.ownerUsername,
+            }
+          : null;
+      })
+      .filter((m): m is NonNullable<typeof m> => m !== null);
+  }
+
+  /** 创建家庭：账号需不在任何家庭中 */
+  async createFamily(
+    username: string
+  ): Promise<{ ok: boolean; error?: string; family?: FamilyRecord }> {
+    const key = username.trim().toLowerCase();
+    const map = await this.accounts();
+    const account = map[key];
+    if (!account) return { ok: false, error: '用户不存在' };
+
+    const memberships = await this.memberships();
+    if (memberships[key]) return { ok: false, error: '你已在一个家庭中，请先退出' };
+
+    const code = await this.genFamilyCode();
+    const family: FamilyRecord = {
+      code,
+      scopeId: `family_${code}`,
+      ownerId: account.scopeId,
+      ownerUsername: key,
+      memberUsernames: [key],
+      createdAt: Date.now(),
+    };
+
+    const families = await this.families();
+    families[code] = family;
+    memberships[key] = code;
+    await this.saveFamilies(families);
+    await this.saveMemberships(memberships);
+    return { ok: true, family };
+  }
+
+  /** 按家庭码查询家庭（含成员实时资料） */
+  async getFamilyByCode(
+    code: string
+  ): Promise<{ ok: boolean; error?: string; family?: FamilyRecord; members?: Array<{ username: string; displayName: string; emoji: string; isOwner: boolean }> }> {
+    const normalized = String(code).replace(/\D/g, '');
+    const families = await this.families();
+    const family = families[normalized];
+    if (!family) return { ok: false, error: '家庭码不存在' };
+
+    const accounts = await this.accounts();
+    return { ok: true, family, members: this.resolveMembers(family, accounts) };
+  }
+
+  /** 加入家庭：账号需不在任何家庭中 */
+  async joinFamily(
+    username: string,
+    code: string
+  ): Promise<{ ok: boolean; error?: string; family?: FamilyRecord }> {
+    const key = username.trim().toLowerCase();
+    const map = await this.accounts();
+    if (!map[key]) return { ok: false, error: '用户不存在' };
+
+    const normalized = String(code).replace(/\D/g, '');
+    if (normalized.length !== 6) return { ok: false, error: '家庭码应为 6 位数字' };
+
+    const memberships = await this.memberships();
+    if (memberships[key]) return { ok: false, error: '你已在一个家庭中，请先退出' };
+
+    const families = await this.families();
+    const family = families[normalized];
+    if (!family) return { ok: false, error: '家庭码不存在，请核对后重试' };
+
+    family.memberUsernames.push(key);
+    memberships[key] = normalized;
+    families[normalized] = family;
+    await this.saveFamilies(families);
+    await this.saveMemberships(memberships);
+    return { ok: true, family };
+  }
+
+  /** 当前账号的家庭与成员列表（实时资料） */
+  async listFamilyMembers(
+    username: string
+  ): Promise<{ ok: boolean; error?: string; family?: FamilyRecord; members?: Array<{ username: string; displayName: string; emoji: string; isOwner: boolean }> }> {
+    const key = username.trim().toLowerCase();
+    const memberships = await this.memberships();
+    const code = memberships[key];
+    if (!code) return { ok: false, error: '你还没有加入家庭' };
+    return this.getFamilyByCode(code);
+  }
+
+  /** 移除成员：仅创建者可操作，不能移除自己 */
+  async removeFamilyMember(
+    username: string,
+    targetUsername: string
+  ): Promise<{ ok: boolean; error?: string; members?: Array<{ username: string; displayName: string; emoji: string; isOwner: boolean }> }> {
+    const key = username.trim().toLowerCase();
+    const targetKey = String(targetUsername).trim().toLowerCase();
+    const memberships = await this.memberships();
+    const code = memberships[key];
+    if (!code) return { ok: false, error: '你还没有加入家庭' };
+
+    const families = await this.families();
+    const family = families[code];
+    if (!family) return { ok: false, error: '家庭不存在' };
+    if (family.ownerUsername !== key)
+      return { ok: false, error: '只有家庭创建者可以移除成员' };
+    if (targetKey === key)
+      return { ok: false, error: '不能移除自己，请使用退出家庭' };
+
+    const accounts = await this.accounts();
+    if (!accounts[targetKey]) return { ok: false, error: '目标用户不存在' };
+
+    family.memberUsernames = family.memberUsernames.filter((u) => u !== targetKey);
+    delete memberships[targetKey];
+    families[code] = family;
+    await this.saveFamilies(families);
+    await this.saveMemberships(memberships);
+
+    return { ok: true, members: this.resolveMembers(family, accounts) };
+  }
+
+  /** 退出家庭；创建者退出时所有权转移给最早的剩余成员（无成员则解散） */
+  async leaveFamily(
+    username: string
+  ): Promise<{ ok: boolean; error?: string; dissolved?: boolean; newOwner?: string }> {
+    const key = username.trim().toLowerCase();
+    const memberships = await this.memberships();
+    const code = memberships[key];
+    if (!code) return { ok: false, error: '你还没有加入家庭' };
+
+    const families = await this.families();
+    const family = families[code];
+    if (!family) {
+      delete memberships[key];
+      await this.saveMemberships(memberships);
+      return { ok: true, dissolved: true };
+    }
+
+    family.memberUsernames = family.memberUsernames.filter((u) => u !== key);
+    delete memberships[key];
+
+    if (family.ownerUsername === key) {
+      const nextOwner = family.memberUsernames[0];
+      if (nextOwner) {
+        family.ownerUsername = nextOwner;
+        family.ownerId = `user_${nextOwner}`;
+        families[code] = family;
+        await this.saveFamilies(families);
+        await this.saveMemberships(memberships);
+        return { ok: true, dissolved: false, newOwner: nextOwner };
+      }
+      // 没有其他成员 → 解散家庭（共享区数据保留在 family_ 作用域，无法再凭码访问）
+      delete families[code];
+      await this.saveFamilies(families);
+      await this.saveMemberships(memberships);
+      return { ok: true, dissolved: true };
+    }
+
+    families[code] = family;
+    await this.saveFamilies(families);
+    await this.saveMemberships(memberships);
+    return { ok: true, dissolved: false };
+  }
+
+  /** 更换家庭码（创建者操作；旧码立即失效） */
+  async regenerateFamilyCode(
+    username: string
+  ): Promise<{ ok: boolean; error?: string; family?: FamilyRecord }> {
+    const key = username.trim().toLowerCase();
+    const memberships = await this.memberships();
+    const code = memberships[key];
+    if (!code) return { ok: false, error: '你还没有加入家庭' };
+
+    const families = await this.families();
+    const family = families[code];
+    if (!family) return { ok: false, error: '家庭不存在' };
+    if (family.ownerUsername !== key)
+      return { ok: false, error: '只有家庭创建者可以更换家庭码' };
+
+    const newCode = await this.genFamilyCode();
+    delete families[code];
+    family.code = newCode;
+    family.scopeId = `family_${newCode}`;
+    families[newCode] = family;
+    await this.saveFamilies(families);
+    await this.saveMemberships(memberships);
+    return { ok: true, family };
   }
 }
 

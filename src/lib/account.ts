@@ -49,7 +49,7 @@ export function clearSession(): void {
   }
 }
 
-function accountHeaders(): Record<string, string> {
+export function accountHeaders(): Record<string, string> {
   const token = getAccountToken();
   return token ? { Authorization: `Account ${token}` } : {};
 }

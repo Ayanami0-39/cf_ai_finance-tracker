@@ -22,10 +22,12 @@ interface UseVoiceConversationReturn {
 }
 
 export function useVoiceConversation(
-  options?: UseVoiceConversationOptions
+  options?: UseVoiceConversationOptions & { scopeId?: string }
 ): UseVoiceConversationReturn {
   const [phase, setPhase] = useState<Phase>('idle');
   const [error, setError] = useState<string | null>(null);
+  const scopeIdRef = useRef<string | undefined>(options?.scopeId);
+  scopeIdRef.current = options?.scopeId;
 
   const previousSpeakingRef = useRef(false);
   const lastSentMessageRef = useRef('');
@@ -48,7 +50,7 @@ export function useVoiceConversation(
       const account = getAccount();
       if (!account) throw new Error('未登录，请先登录账号');
       const result = await api.sendVoiceCommand({
-        userId: account.scopeId,
+        userId: scopeIdRef.current || account.scopeId,
         input: message,
         memberName: account.displayName,
         memberId: account.username,

@@ -474,49 +474,37 @@ app.post('/api/voice-command', async (c) => {
   }
 });
 
-// ---- Family code endpoints ----
+// ---- Family endpoints（账号制：家庭注册表存 UserRegistry，数据存 family_ 作用域） ----
 
-// Create a family: generates a 6-digit code, migrates this device's data
+// 创建家庭：生成 6 位家庭码；可选把个人数据并入家庭共享区
 app.post('/api/family/create', async (c) => {
   try {
-    const { userId, members, expenses, chatMessages } = await c.req.json();
+    const registry = registryStub(c);
+    const account = await sessionFromRequest(c, registry);
+    if (!account) return c.json({ success: false, error: '未登录' }, 401);
 
-    if (!userId || !Array.isArray(members)) {
-      return c.json({ success: false, error: 'userId and members required' }, 400);
+    const body = await c.req.json().catch(() => ({}));
+    const result = await registry.createFamily(account.username);
+    if (!result.ok || !result.family) {
+      return c.json({ success: false, error: result.error }, 400);
     }
 
-    // 6 位数字家庭码（排除易混淆的 0/1，共 8^6 = 262144 组合）
-    const digits = '23456789';
-    let code = '';
-    for (let i = 0; i < 6; i++) {
-      code += digits[Math.floor(Math.random() * digits.length)];
-    }
-
-    const scopeId = `family_${code}`;
-    const id = c.env.FINANCE_MEMORY.idFromName(scopeId);
-    const stub = c.env.FINANCE_MEMORY.get(id);
-
-    // 写入家庭成员注册表（服务端共享）
-    await stub.setFamilyMembers(members);
-    // 记录家庭创建者，作为移除成员的权限校验依据
-    await stub.setFamilyOwnerId(userId);
-
-    // 迁移本机既有数据
+    // 可选迁移：把个人账单/聊天并入家庭共享作用域
     let importedExpenses = 0;
     let importedChat = 0;
-    if (Array.isArray(expenses) && expenses.length > 0) {
-      importedExpenses = await stub.importExpenses(
-        expenses.map((e: Expense) => ({ ...e, by: e.by || undefined }))
-      );
-    }
-    if (Array.isArray(chatMessages) && chatMessages.length > 0) {
-      importedChat = await stub.importChatMessages(chatMessages);
+    if (body.mergePersonalData !== false) {
+      const mergeRes = await mergeScopes(c.env, account.scopeId, result.family.scopeId);
+      importedExpenses = mergeRes.importedExpenses;
+      importedChat = mergeRes.importedChat;
     }
 
     return c.json({
       success: true,
-      code,
-      scopeId,
+      family: {
+        code: result.family.code,
+        scopeId: result.family.scopeId,
+        isOwner: true,
+      },
       importedExpenses,
       importedChat,
     });
@@ -525,54 +513,37 @@ app.post('/api/family/create', async (c) => {
   }
 });
 
-// Join a family by code
+// 凭家庭码加入家庭
 app.post('/api/family/join', async (c) => {
   try {
-    const { code, members, expenses, chatMessages } = await c.req.json();
+    const registry = registryStub(c);
+    const account = await sessionFromRequest(c, registry);
+    if (!account) return c.json({ success: false, error: '未登录' }, 401);
 
-    if (!code || typeof code !== 'string') {
-      return c.json({ success: false, error: 'code required' }, 400);
+    const { code, mergePersonalData } = await c.req.json().catch(() => ({}));
+    if (!code) return c.json({ success: false, error: '请输入家庭码' }, 400);
+
+    const result = await registry.joinFamily(account.username, String(code));
+    if (!result.ok || !result.family) {
+      return c.json({ success: false, error: result.error }, 400);
     }
 
-    const normalized = code.replace(/\D/g, '');
-    if (normalized.length !== 6) {
-      return c.json({ success: false, error: '家庭码应为 6 位数字' }, 400);
-    }
-
-    const scopeId = `family_${normalized}`;
-    const id = c.env.FINANCE_MEMORY.idFromName(scopeId);
-    const stub = c.env.FINANCE_MEMORY.get(id);
-
-    // 校验家庭存在（无成员注册表说明码无效或家庭未创建）
-    const existing = await stub.getFamilyMembers();
-    if (!existing || existing.length === 0) {
-      return c.json({ success: false, error: '家庭码不存在，请核对后重试' }, 404);
-    }
-
-    // 合并成员（按 id 去重）
-    const merged = [...existing];
-    for (const m of Array.isArray(members) ? members : []) {
-      if (m && m.id && !merged.some((x) => x.id === m.id)) {
-        merged.push(m);
-        await stub.setFamilyMembers(merged);
-        break;
-      }
-    }
-
-    // 迁移本机既有数据
+    // 默认把个人数据并入家庭共享区
     let importedExpenses = 0;
     let importedChat = 0;
-    if (Array.isArray(expenses) && expenses.length > 0) {
-      importedExpenses = await stub.importExpenses(expenses);
-    }
-    if (Array.isArray(chatMessages) && chatMessages.length > 0) {
-      importedChat = await stub.importChatMessages(chatMessages);
+    if (mergePersonalData !== false) {
+      const mergeRes = await mergeScopes(c.env, account.scopeId, result.family.scopeId);
+      importedExpenses = mergeRes.importedExpenses;
+      importedChat = mergeRes.importedChat;
     }
 
     return c.json({
       success: true,
-      code: normalized,
-      scopeId,
+      family: {
+        code: result.family.code,
+        scopeId: result.family.scopeId,
+        isOwner: false,
+      },
       importedExpenses,
       importedChat,
     });
@@ -581,85 +552,105 @@ app.post('/api/family/join', async (c) => {
   }
 });
 
-// Get family members registry
-app.get('/api/family/:scopeId/members', async (c) => {
+// 我的家庭（含成员实时资料；未加入返回 family: null）
+app.get('/api/family/mine', async (c) => {
   try {
-    const param: { scopeId: string } = c.req.param();
-    const id = c.env.FINANCE_MEMORY.idFromName(param.scopeId);
-    const stub = c.env.FINANCE_MEMORY.get(id);
-    const members = await stub.getFamilyMembers();
-    const ownerId = await stub.getFamilyOwnerId();
-    return c.json({ success: true, members, ownerId });
-  } catch (err) {
-    return c.json({ success: false, error: String(err) }, 500);
-  }
-});
+    const registry = registryStub(c);
+    const account = await sessionFromRequest(c, registry);
+    if (!account) return c.json({ success: false, error: '未登录' }, 401);
 
-// Upsert member profile into family registry（改名/换头像后同步到家庭）
-app.post('/api/family/:scopeId/members', async (c) => {
-  try {
-    const param: { scopeId: string } = c.req.param();
-    const body = await c.req.json();
-    if (!body.id || !body.name) {
-      return c.json({ success: false, error: 'id and name required' }, 400);
+    const result = await registry.listFamilyMembers(account.username);
+    if (!result.ok) {
+      return c.json({ success: true, family: null, members: [] });
     }
-
-    const id = c.env.FINANCE_MEMORY.idFromName(param.scopeId);
-    const stub = c.env.FINANCE_MEMORY.get(id);
-    const existing = await stub.getFamilyMembers();
-
-    let updated = false;
-    const merged = existing.map((m) => {
-      if (m.id === body.id) {
-        updated = true;
-        return { id: m.id, name: body.name, emoji: body.emoji || m.emoji };
-      }
-      return m;
+    return c.json({
+      success: true,
+      family: result.family
+        ? { code: result.family.code, scopeId: result.family.scopeId, isOwner: result.family.ownerUsername === account.username.toLowerCase() }
+        : null,
+      members: result.members,
     });
-    if (!updated) merged.push({ id: body.id, name: body.name, emoji: body.emoji || '🙂' });
-    await stub.setFamilyMembers(merged);
-
-    return c.json({ success: true, members: merged });
   } catch (err) {
     return c.json({ success: false, error: String(err) }, 500);
   }
 });
 
-// Remove a member from the family registry（仅家庭创建者可操作）
-app.delete('/api/family/:scopeId/members/:memberId', async (c) => {
+// 移除成员（仅创建者）
+app.delete('/api/family/members/:username', async (c) => {
   try {
-    const { scopeId, memberId } = c.req.param();
-    const { operatorId } = await c.req.json().catch(() => ({ operatorId: '' }));
+    const registry = registryStub(c);
+    const account = await sessionFromRequest(c, registry);
+    if (!account) return c.json({ success: false, error: '未登录' }, 401);
 
-    if (!operatorId) {
-      return c.json({ success: false, error: 'operatorId required' }, 400);
-    }
-
-    const id = c.env.FINANCE_MEMORY.idFromName(scopeId);
-    const stub = c.env.FINANCE_MEMORY.get(id);
-
-    const ownerId = await stub.getFamilyOwnerId();
-    if (ownerId) {
-      if (operatorId !== ownerId) {
-        return c.json({ success: false, error: '只有家庭创建者可以移除成员' }, 403);
-      }
-    } else {
-      // 旧家庭未记录创建者：允许任一在册成员移除
-      const current = await stub.getFamilyMembers();
-      if (!current.some((m) => m.id === operatorId)) {
-        return c.json({ success: false, error: '只有家庭成员可以移除成员' }, 403);
-      }
-    }
-    if (memberId === operatorId) {
-      return c.json({ success: false, error: '不能移除自己，请使用退出家庭' }, 400);
-    }
-
-    const members = await stub.removeFamilyMember(memberId);
-    return c.json({ success: true, members });
+    const result = await registry.removeFamilyMember(account.username, c.req.param('username'));
+    if (!result.ok) return c.json({ success: false, error: result.error }, 400);
+    return c.json({ success: true, members: result.members });
   } catch (err) {
     return c.json({ success: false, error: String(err) }, 500);
   }
 });
+
+// 退出家庭（创建者退出则所有权转移给最早成员；无人则解散）
+app.post('/api/family/leave', async (c) => {
+  try {
+    const registry = registryStub(c);
+    const account = await sessionFromRequest(c, registry);
+    if (!account) return c.json({ success: false, error: '未登录' }, 401);
+
+    const result = await registry.leaveFamily(account.username);
+    if (!result.ok) return c.json({ success: false, error: result.error }, 400);
+    return c.json({
+      success: true,
+      dissolved: result.dissolved || false,
+      newOwner: result.newOwner || null,
+    });
+  } catch (err) {
+    return c.json({ success: false, error: String(err) }, 500);
+  }
+});
+
+// 更换家庭码（仅创建者；旧码立即失效）
+app.post('/api/family/regenerate-code', async (c) => {
+  try {
+    const registry = registryStub(c);
+    const account = await sessionFromRequest(c, registry);
+    if (!account) return c.json({ success: false, error: '未登录' }, 401);
+
+    const result = await registry.regenerateFamilyCode(account.username);
+    if (!result.ok || !result.family) {
+      return c.json({ success: false, error: result.error }, 400);
+    }
+    return c.json({
+      success: true,
+      family: { code: result.family.code, scopeId: result.family.scopeId, isOwner: true },
+    });
+  } catch (err) {
+    return c.json({ success: false, error: String(err) }, 500);
+  }
+});
+
+// 把源作用域的账单/聊天按 id 去重合并进目标作用域（家庭加入/创建时迁移个人数据用）
+async function mergeScopes(
+  env: Env,
+  sourceScopeId: string,
+  targetScopeId: string
+): Promise<{ importedExpenses: number; importedChat: number }> {
+  if (sourceScopeId === targetScopeId) return { importedExpenses: 0, importedChat: 0 };
+  const sourceStub = env.FINANCE_MEMORY.get(
+    env.FINANCE_MEMORY.idFromName(sourceScopeId)
+  );
+  const targetStub = env.FINANCE_MEMORY.get(
+    env.FINANCE_MEMORY.idFromName(targetScopeId)
+  );
+  const [expenses, chat] = await Promise.all([
+    sourceStub.getExpenses(),
+    sourceStub.getChatMessages(),
+  ]);
+  const importedExpenses = expenses.length ? await targetStub.importExpenses(expenses) : 0;
+  const importedChat = chat.length ? await targetStub.importChatMessages(chat) : 0;
+  return { importedExpenses, importedChat };
+}
+
 
 // ---- Identity merge: 把源作用域（旧设备 ID）的数据合并到目标作用域（本机 ID） ----
 app.post('/api/identity/merge', async (c) => {

@@ -16,6 +16,7 @@ export interface Message {
   role: 'user' | 'ai';
   content: string;
   by?: string;
+  byId?: string;
   expense?: {
     merchant: string;
     amount: number;

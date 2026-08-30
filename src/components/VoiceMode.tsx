@@ -9,6 +9,7 @@ interface VoiceModeProps {
   onClose: () => void;
   onMessageReceived: (message: string, expense?: unknown) => void;
   onUserMessage: (message: string) => void;
+  scopeId?: string;
 }
 
 export function VoiceMode({
@@ -16,12 +17,14 @@ export function VoiceMode({
   onClose,
   onMessageReceived,
   onUserMessage,
+  scopeId,
 }: VoiceModeProps) {
   const [audioStream, setAudioStream] = useState<MediaStream | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
 
   const { phase, transcription, isListening, start, stop, error } =
     useVoiceConversation({
+      scopeId,
       onMessageReceived: (message: string, expense?: unknown) => {
         onMessageReceived(message, expense);
       },

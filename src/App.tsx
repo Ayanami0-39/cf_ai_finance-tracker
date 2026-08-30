@@ -7,6 +7,7 @@ import { VoiceMode } from "./components/VoiceMode";
 import { AuthGate } from "./components/AuthGate";
 import { AccountLogin } from "./components/AccountLogin";
 import { ProfileEditor } from "./components/ProfileEditor";
+import { FamilySettings } from "./components/FamilySettings";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { MessageCircle, ReceiptText, BarChart3 } from "lucide-react";
 import { api } from "./lib/api";
@@ -21,7 +22,46 @@ function App() {
   const [isVoiceMode, setIsVoiceMode] = useState(false);
   const [account, setAccount] = useState<AccountInfo | null>(() => getAccount());
   const [showProfile, setShowProfile] = useState(false);
+  const [showFamily, setShowFamily] = useState(false);
+  const [family, setFamily] = useState<{ code: string; scopeId: string; isOwner: boolean } | null>(null);
   const [mobileTab, setMobileTab] = useState<"chat" | "expenses" | "stats">("chat");
+
+  // 当前生效数据作用域：家庭共享区优先，否则个人区
+  const activeScope = family?.scopeId || account?.scopeId || "";
+
+  // 已有会话：打开应用时刷新服务端资料与家庭归属，再加载数据
+  useEffect(() => {
+    if (!account) return;
+    (async () => {
+      const meRes = await accountApi.me();
+      const acct = meRes.success && meRes.account ? meRes.account : account;
+      setAccount(acct);
+
+      const famRes = await api.getMyFamily();
+      const fam = famRes.success ? famRes.family : null;
+      setFamily(fam);
+
+      const scope = fam?.scopeId || acct.scopeId;
+      loadExpenses(scope);
+      loadChatHistory(scope);
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const handleFamilyChanged = () => {
+    // 创建/加入/退出家庭后：刷新家庭归属并按新作用域重载数据
+    api.getMyFamily().then((res) => {
+      const fam = res.success ? res.family : null;
+      setFamily(fam);
+      const scope = fam?.scopeId || account?.scopeId;
+      if (scope) {
+        setExpenses([]);
+        setMessages([]);
+        loadExpenses(scope);
+        loadChatHistory(scope);
+      }
+    });
+  };
 
   // 已有会话：打开应用时刷新服务端资料（其他设备改过昵称/头像也能同步）并加载数据
   useEffect(() => {
@@ -67,14 +107,14 @@ function App() {
   };
 
   const handleDeleteExpense = async (expenseId: string) => {
-    if (!account) return;
+    if (!activeScope) return;
     // 乐观更新：先移除本地，再请求后端
     setExpenses((prev) => prev.filter((e) => e.id !== expenseId));
     try {
-      await api.deleteExpense(account.scopeId, expenseId);
+      await api.deleteExpense(activeScope, expenseId);
     } catch {
       // 失败时回滚重新拉取
-      loadExpenses(account.scopeId);
+      loadExpenses(activeScope);
     }
   };
 
@@ -101,9 +141,9 @@ function App() {
   };
 
   const saveChatMessage = async (message: Message) => {
-    if (!account) return;
+    if (!activeScope) return;
     try {
-      await api.saveChatMessage(account.scopeId, message);
+      await api.saveChatMessage(activeScope, message);
     } catch (error) {
       // Error saving chat message
     }
@@ -117,6 +157,7 @@ function App() {
       content: input,
       timestamp: Date.now(),
       by: account.displayName,
+      byId: account.username,
     };
     setMessages((prev) => [...prev, userMessage]);
 
@@ -127,7 +168,7 @@ function App() {
 
     try {
       const response = await api.sendVoiceCommand({
-        userId: account.scopeId,
+        userId: activeScope,
         input,
         memberName: account.displayName,
         memberId: account.username,
@@ -153,7 +194,7 @@ function App() {
       // Save AI message
       saveChatMessage(aiMessage);
 
-      await loadExpenses(account.scopeId);
+      await loadExpenses(activeScope);
     } catch {
       const errorMessage: Message = {
         id: crypto.randomUUID(),
@@ -178,6 +219,7 @@ function App() {
       content: message,
       timestamp: Date.now(),
       by: account.displayName,
+      byId: account.username,
     };
     setMessages((prev) => [...prev, userMessage]);
 
@@ -197,8 +239,8 @@ function App() {
     // Save voice message
     saveChatMessage(aiMessage);
 
-    if (expense && account) {
-      loadExpenses(account.scopeId);
+    if (expense && activeScope) {
+      loadExpenses(activeScope);
     }
   };
 
@@ -217,6 +259,8 @@ function App() {
         <TopBar
           account={account}
           onEditProfile={() => setShowProfile(true)}
+          familyCode={family?.code}
+          onOpenFamily={() => setShowFamily(true)}
         />
 
       <div className="hidden md:flex flex-1 overflow-hidden">
@@ -285,6 +329,7 @@ function App() {
         onClose={() => setIsVoiceMode(false)}
         onMessageReceived={handleVoiceMessageReceived}
         onUserMessage={handleVoiceUserMessage}
+        scopeId={activeScope}
       />
 
       {showProfile && (
@@ -292,6 +337,13 @@ function App() {
           account={account}
           onClose={() => setShowProfile(false)}
           onSaved={handleProfileSaved}
+        />
+      )}
+
+      {showFamily && (
+        <FamilySettings
+          onClose={() => setShowFamily(false)}
+          onChanged={handleFamilyChanged}
         />
       )}
       </div>
