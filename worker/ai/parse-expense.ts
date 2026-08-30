@@ -25,7 +25,7 @@ export async function processExpenseInput(
     const userPrompt = getExpenseEntryPrompt(input, memberName, today);
 
     const response = await AI.run(
-      AI_CONFIG.model,
+      AI_CONFIG.model as unknown as Parameters<typeof AI.run>[0],
       {
         messages: [
           {
@@ -37,7 +37,6 @@ export async function processExpenseInput(
             content: userPrompt
           }
         ],
-        temperature: AI_CONFIG.temperature,
         max_tokens: AI_CONFIG.max_tokens
       }
     ) as Record<string, unknown>;
@@ -62,6 +61,18 @@ export async function processExpenseInput(
       const message = first.message as Record<string, unknown> | undefined;
       if (message && typeof message.content === 'string') {
         aiText = message.content;
+      }
+    } else if (Array.isArray(response.candidates) && response.candidates.length > 0) {
+      const first = response.candidates[0] as Record<string, unknown>;
+      const content = first.content as Record<string, unknown> | undefined;
+      const parts = content?.parts;
+      if (Array.isArray(parts) && parts.length > 0) {
+        const texts = parts
+          .map((p) => (typeof (p as Record<string, unknown>).text === 'string' ? ((p as Record<string, unknown>).text as string) : ''))
+          .filter(Boolean);
+        if (texts.length > 0) {
+          aiText = texts.join('');
+        }
       }
     }
 

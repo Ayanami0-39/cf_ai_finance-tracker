@@ -130,7 +130,6 @@ CRITICAL:
 export const SYSTEM_MESSAGE = `You are a transaction-parsing engine. Convert the user's message into ONE structured JSON object. Chinese and English input both supported. Accuracy of extraction is your only goal.`;
 
 export const AI_CONFIG = {
-  model: '@cf/meta/llama-3.1-8b-instruct-fp8',
-  temperature: 0.3,
+  model: 'google/gemini-3.5-flash-lite',
   max_tokens: 4000
 } as const;
