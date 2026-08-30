@@ -2,12 +2,12 @@ import { useState, useEffect, useRef } from "react";
 import { Mic, MicOff, PhoneOff, Volume2, Loader2, X } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { AudioVisualizer } from "./AudioVisualizer";
-import { useVoiceConversation } from "@/hooks/useVoiceConversation";
+import { useVoiceConversation, type VoiceExpensePayload } from "@/hooks/useVoiceConversation";
 
 interface VoiceModeProps {
   isActive: boolean;
   onClose: () => void;
-  onMessageReceived: (message: string, expense?: unknown) => void;
+  onMessageReceived: (message: string, expense?: VoiceExpensePayload) => void;
   onUserMessage: (message: string) => void;
   scopeId?: string;
 }
@@ -25,7 +25,7 @@ export function VoiceMode({
   const { phase, transcription, isListening, start, stop, error } =
     useVoiceConversation({
       scopeId,
-      onMessageReceived: (message: string, expense?: unknown) => {
+      onMessageReceived: (message: string, expense?: VoiceExpensePayload) => {
         onMessageReceived(message, expense);
       },
       onUserMessage: (message: string) => {

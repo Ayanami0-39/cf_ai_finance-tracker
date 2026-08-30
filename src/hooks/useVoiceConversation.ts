@@ -6,8 +6,14 @@ import { getAccount } from '@/lib/account';
 
 type Phase = 'idle' | 'listening' | 'thinking' | 'speaking' | 'error';
 
+/** 语音回调透传的记账摘要（含来源标记，聊天气泡角标用） */
+export interface VoiceExpensePayload {
+  id?: string;
+  parsedBy?: 'ai' | 'fallback';
+}
+
 interface UseVoiceConversationOptions {
-  onMessageReceived?: (message: string, expense?: unknown) => void;
+  onMessageReceived?: (message: string, expense?: VoiceExpensePayload) => void;
   onUserMessage?: (message: string) => void;
 }
 
@@ -45,7 +51,7 @@ export function useVoiceConversation(
   const { speak, isSpeaking, error: ttsError } = useElevenLabs();
 
   // Query the server with user input using our existing API
-  const queryServer = useCallback(async (message: string): Promise<{ response: string; expense?: unknown }> => {
+  const queryServer = useCallback(async (message: string): Promise<{ response: string; expense?: VoiceExpensePayload }> => {
     try {
       const account = getAccount();
       if (!account) throw new Error('未登录，请先登录账号');

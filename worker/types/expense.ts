@@ -1,26 +1,14 @@
-export type TrxType = 'expense' | 'income';
-
 export interface Expense {
   id: string;
   amount: number;
   category: string;
-  description: string;
   merchant?: string;
+  description: string;
   date: string;
   createdAt: number;
-  type?: TrxType;
+  type?: 'expense' | 'income';
   by?: string;
   byId?: string;
-}
-
-export interface AddExpenseRequest {
-  userId: string;
-  amount: number;
-  description: string;
-}
-
-export interface AddExpenseResponse {
-  success: boolean;
-  expense?: Expense;
-  error?: string;
+  /** 记录来源：ai = AI 智能解析，fallback = 规则兜底 */
+  parsedBy?: 'ai' | 'fallback';
 }

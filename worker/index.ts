@@ -105,7 +105,8 @@ app.post('/api/expense-natural', async (c) => {
       createdAt: Date.now(),
       type: aiResult.type,
       by: memberName,
-      byId: memberId
+      byId: memberId,
+      parsedBy: aiResult.parsedBy
     };
 
     try {
@@ -130,12 +131,13 @@ app.post('/api/expense-natural', async (c) => {
       return c.json({
         success: true,
         message: aiResult.message,
+        parsedBy: aiResult.parsedBy,
         expense: {
           id: expense.id,
           amount: expense.amount,
           category: expense.category,
           merchant: expense.merchant,
-          date: expense.date
+          parsedBy: expense.parsedBy
         }
       });
 
@@ -247,6 +249,57 @@ app.delete('/api/expenses/:userId/:expenseId', async (c) => {
   }
 });
 
+// Edit a single expense（弹窗修改日期、金额、类型、商家、分类、描述）
+app.patch('/api/expenses/:userId/:expenseId', async (c) => {
+  try {
+    const userId = c.req.param('userId');
+    const expenseId = c.req.param('expenseId');
+    const body = await c.req.json().catch(() => ({}));
+
+    // 白名单字段校验：金额必须为正数，日期必须合法，类型仅限收支两种
+    const patch: Record<string, unknown> = {};
+    if (body.amount !== undefined) {
+      const amount = Number(body.amount);
+      if (!Number.isFinite(amount) || amount <= 0) {
+        return c.json({ success: false, error: '金额必须是大于 0 的数字' }, 400);
+      }
+      patch.amount = amount;
+    }
+    if (body.date !== undefined) {
+      const date = String(body.date);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || Number.isNaN(new Date(date).getTime())) {
+        return c.json({ success: false, error: '日期格式应为 YYYY-MM-DD' }, 400);
+      }
+      patch.date = date;
+    }
+    if (body.type !== undefined) {
+      if (body.type !== 'expense' && body.type !== 'income') {
+        return c.json({ success: false, error: '类型仅支持 expense / income' }, 400);
+      }
+      patch.type = body.type;
+    }
+    if (body.merchant !== undefined) patch.merchant = String(body.merchant).slice(0, 100) || undefined;
+    if (body.description !== undefined) patch.description = String(body.description).slice(0, 500) || undefined;
+    if (body.category !== undefined) patch.category = String(body.category).slice(0, 50) || 'Other';
+
+    if (Object.keys(patch).length === 0) {
+      return c.json({ success: false, error: '没有需要修改的字段' }, 400);
+    }
+
+    const id = c.env.FINANCE_MEMORY.idFromName(userId);
+    const stub = c.env.FINANCE_MEMORY.get(id);
+
+    const updated = await stub.updateExpense(expenseId, patch as Partial<Expense>);
+    if (!updated) {
+      return c.json({ success: false, error: '记录不存在' }, 404);
+    }
+
+    return c.json({ success: true, expense: updated });
+  } catch (err) {
+    return c.json({ success: false, error: String(err) }, 500);
+  }
+});
+
 // Chat history endpoints
 app.get('/api/chat/:userId', async (c) => {
   try {
@@ -348,7 +401,8 @@ app.post('/api/voice-command', async (c) => {
         createdAt: Date.now(),
         type: aiResult.type,
         by: memberName,
-        byId: memberId
+        byId: memberId,
+        parsedBy: aiResult.parsedBy
       };
 
       try {
@@ -379,6 +433,7 @@ app.post('/api/voice-command', async (c) => {
       return c.json({
         success: true,
         message: datedMsg,
+        parsedBy: aiResult.parsedBy,
         data: { expense }
       });
 

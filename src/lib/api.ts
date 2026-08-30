@@ -90,6 +90,26 @@ export const api = {
     }
   },
 
+  // 编辑交易记录（日期、金额、类型、商家、分类、描述）
+  async updateExpense(
+    userId: string,
+    expenseId: string,
+    patch: Partial<Pick<
+      import('@/types').Expense,
+      'amount' | 'date' | 'type' | 'merchant' | 'category' | 'description'
+    >>
+  ): Promise<{ success: boolean; expense?: import('@/types').Expense; error?: string }> {
+    const response = await fetch(
+      `${API_BASE}/expenses/${userId}/${expenseId}`,
+      {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
+        body: JSON.stringify(patch),
+      }
+    );
+    return response.json();
+  },
+
   async getChatHistory(userId: string): Promise<ChatResponse> {
     const response = await fetch(`${API_BASE}/chat/${userId}`, {
       headers: authHeaders(),

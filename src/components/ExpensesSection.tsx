@@ -8,11 +8,13 @@ interface ExpensesSectionProps {
   expenses: Expense[];
   onExpensesClick?: () => void;
   onDeleteExpense?: (id: string) => void;
+  onEditExpense?: (expense: Expense) => void;
 }
 
 export function ExpensesSection({
   expenses,
   onDeleteExpense,
+  onEditExpense,
 }: ExpensesSectionProps) {
   const sorted = [...expenses].sort((a, b) => b.createdAt - a.createdAt);
 
@@ -80,6 +82,7 @@ export function ExpensesSection({
                 expense={expense}
                 member={resolveMember(expense)}
                 onDelete={onDeleteExpense}
+                onEdit={onEditExpense}
               />
             ))}
           </div>

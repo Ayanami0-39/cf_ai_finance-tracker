@@ -46,6 +46,21 @@ export class FinanceMemory extends DurableObject<Env> {
     return true;
   }
 
+  // RPC method: Update expense（编辑交易记录：日期、金额、类型、商家、分类等）
+  async updateExpense(
+    expenseId: string,
+    patch: Partial<Omit<Expense, 'id' | 'createdAt' | 'by' | 'byId'>>
+  ): Promise<Expense | null> {
+    const expenses = (await this.ctx.storage.get<Expense[]>('expenses')) || [];
+    const idx = expenses.findIndex(e => e.id === expenseId);
+    if (idx === -1) return null;
+
+    const updated: Expense = { ...expenses[idx], ...patch, id: expenses[idx].id };
+    expenses[idx] = updated;
+    await this.ctx.storage.put('expenses', expenses);
+    return updated;
+  }
+
   // RPC method: Clear expenses
   async clearExpenses(): Promise<void> {
     await this.ctx.storage.delete('expenses');

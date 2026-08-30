@@ -16,12 +16,14 @@ import {
   Trash2,
   X,
   Check,
+  Pencil,
 } from "lucide-react";
 
 interface ExpenseCardProps {
   expense: Expense;
   member?: { name: string; emoji: string };
   onDelete?: (id: string) => void;
+  onEdit?: (expense: Expense) => void;
 }
 
 const categoryIcons: Record<string, React.ReactNode> = {
@@ -50,7 +52,7 @@ function resolveIcon(category: string): React.ReactNode {
   );
 }
 
-export function ExpenseCard({ expense, member, onDelete }: ExpenseCardProps) {
+export function ExpenseCard({ expense, member, onDelete, onEdit }: ExpenseCardProps) {
   const [confirming, setConfirming] = useState(false);
   const isIncome = expense.type === "income";
   const icon = resolveIcon(expense.category);
@@ -102,14 +104,14 @@ export function ExpenseCard({ expense, member, onDelete }: ExpenseCardProps) {
         </p>
       </div>
 
-      {onDelete && (
-        <div className="flex-shrink-0 -mr-1">
+      {(onDelete || onEdit) && (
+        <div className="flex-shrink-0 -mr-1 flex items-center gap-0.5">
           {confirming ? (
             <div className="flex items-center gap-1">
               <button
                 type="button"
                 aria-label="确认删除"
-                onClick={() => onDelete(expense.id)}
+                onClick={() => onDelete?.(expense.id)}
                 className="w-7 h-7 rounded-md bg-destructive text-white flex items-center justify-center hover:bg-destructive/90 active:scale-95 transition-all"
               >
                 <Check className="w-3.5 h-3.5" />
@@ -127,14 +129,28 @@ export function ExpenseCard({ expense, member, onDelete }: ExpenseCardProps) {
               </span>
             </div>
           ) : (
-            <button
-              type="button"
-              aria-label="删除该记录"
-              onClick={() => setConfirming(true)}
-              className="w-7 h-7 rounded-md text-muted-foreground/60 hover:text-destructive hover:bg-destructive/10 flex items-center justify-center transition-colors"
-            >
-              <Trash2 className="w-3.5 h-3.5" />
-            </button>
+            <>
+              {onEdit && (
+                <button
+                  type="button"
+                  aria-label="编辑该记录"
+                  onClick={() => onEdit(expense)}
+                  className="w-7 h-7 rounded-md text-muted-foreground/60 hover:text-primary hover:bg-primary/10 flex items-center justify-center transition-colors"
+                >
+                  <Pencil className="w-3.5 h-3.5" />
+                </button>
+              )}
+              {onDelete && (
+                <button
+                  type="button"
+                  aria-label="删除该记录"
+                  onClick={() => setConfirming(true)}
+                  className="w-7 h-7 rounded-md text-muted-foreground/60 hover:text-destructive hover:bg-destructive/10 flex items-center justify-center transition-colors"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </>
           )}
         </div>
       )}

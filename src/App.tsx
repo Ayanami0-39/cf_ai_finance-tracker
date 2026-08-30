@@ -4,10 +4,12 @@ import { ChatSection } from "./components/ChatSection";
 import { ExpensesSection } from "./components/ExpensesSection";
 import { StatsSection } from "./components/StatsSection";
 import { VoiceMode } from "./components/VoiceMode";
+import type { VoiceExpensePayload } from "./hooks/useVoiceConversation";
 import { AuthGate } from "./components/AuthGate";
 import { AccountLogin } from "./components/AccountLogin";
 import { ProfileEditor } from "./components/ProfileEditor";
 import { FamilySettings } from "./components/FamilySettings";
+import { EditExpenseModal } from "./components/EditExpenseModal";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { MessageCircle, ReceiptText, BarChart3 } from "lucide-react";
 import { api } from "./lib/api";
@@ -25,6 +27,7 @@ function App() {
   const [showFamily, setShowFamily] = useState(false);
   const [family, setFamily] = useState<{ code: string; scopeId: string; isOwner: boolean } | null>(null);
   const [mobileTab, setMobileTab] = useState<"chat" | "expenses" | "stats">("chat");
+  const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
 
   // 当前生效数据作用域：家庭共享区优先，否则个人区
   const activeScope = family?.scopeId || account?.scopeId || "";
@@ -118,6 +121,24 @@ function App() {
     }
   };
 
+  // 编辑交易记录：乐观更新本地，PATCH 后端，失败回滚并抛错（弹窗内提示）
+  const handleUpdateExpense = async (expenseId: string, patch: Partial<Expense>) => {
+    if (!activeScope) return;
+    setExpenses((prev) =>
+      prev.map((e) => (e.id === expenseId ? { ...e, ...patch } : e))
+    );
+    try {
+      const res = await api.updateExpense(activeScope, expenseId, patch);
+      if (!res.success) throw new Error(res.error || "保存失败");
+      if (res.expense) {
+        setExpenses((prev) => prev.map((e) => (e.id === expenseId ? res.expense! : e)));
+      }
+    } catch (err) {
+      if (activeScope) loadExpenses(activeScope);
+      throw err instanceof Error ? err : new Error("保存失败");
+    }
+  };
+
   const loadExpenses = async (uid: string) => {
     try {
       const response = await api.getExpenses(uid);
@@ -179,13 +200,16 @@ function App() {
         role: "ai",
         content: response.message,
         timestamp: Date.now(),
+        parsedBy: response.parsedBy,
       };
 
       if (response.data?.expense) {
         aiMessage.expense = {
+          id: response.data.expense.id,
           merchant: response.data.expense.merchant || "Unknown",
           amount: response.data.expense.amount,
           category: response.data.expense.category,
+          parsedBy: response.data.expense.parsedBy,
         };
       }
 
@@ -227,12 +251,13 @@ function App() {
     saveChatMessage(userMessage);
   };
 
-  const handleVoiceMessageReceived = (message: string, expense?: unknown) => {
+  const handleVoiceMessageReceived = (message: string, expense?: VoiceExpensePayload) => {
     const aiMessage: Message = {
       id: crypto.randomUUID(),
       role: "ai",
       content: message,
       timestamp: Date.now(),
+      parsedBy: expense?.parsedBy,
     };
     setMessages((prev) => [...prev, aiMessage]);
 
@@ -288,6 +313,7 @@ function App() {
               <ExpensesSection
                 expenses={expenses}
                 onDeleteExpense={handleDeleteExpense}
+                onEditExpense={setEditingExpense}
               />
             </TabsContent>
             <TabsContent value="stats" className="flex-1 mt-0 overflow-hidden">
@@ -313,7 +339,11 @@ function App() {
           </TabsContent>
 
           <TabsContent value="expenses" className="flex-1 mt-0 overflow-hidden">
-            <ExpensesSection expenses={expenses} onDeleteExpense={handleDeleteExpense} />
+            <ExpensesSection
+              expenses={expenses}
+              onDeleteExpense={handleDeleteExpense}
+              onEditExpense={setEditingExpense}
+            />
           </TabsContent>
 
           <TabsContent value="stats" className="flex-1 mt-0 overflow-hidden">
@@ -344,6 +374,14 @@ function App() {
         <FamilySettings
           onClose={() => setShowFamily(false)}
           onChanged={handleFamilyChanged}
+        />
+      )}
+
+      {editingExpense && (
+        <EditExpenseModal
+          expense={editingExpense}
+          onClose={() => setEditingExpense(null)}
+          onSave={handleUpdateExpense}
         />
       )}
       </div>

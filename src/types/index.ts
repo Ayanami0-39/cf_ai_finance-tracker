@@ -9,6 +9,8 @@ export interface Expense {
   type?: 'expense' | 'income';
   by?: string;
   byId?: string;
+  /** 记录来源：ai = AI 智能解析，fallback = 规则兜底 */
+  parsedBy?: 'ai' | 'fallback';
 }
 
 export interface Message {
@@ -17,10 +19,14 @@ export interface Message {
   content: string;
   by?: string;
   byId?: string;
+  /** AI 消息来源：ai = AI 智能解析，fallback = 规则兜底（决定气泡角标显示 🤖 还是 💻） */
+  parsedBy?: 'ai' | 'fallback';
   expense?: {
+    id?: string;
     merchant: string;
     amount: number;
     category: string;
+    parsedBy?: 'ai' | 'fallback';
   };
   timestamp: number;
 }
@@ -28,11 +34,14 @@ export interface Message {
 export interface VoiceCommandResponse {
   success: boolean;
   message: string;
+  parsedBy?: 'ai' | 'fallback';
   data?: {
     expense?: Expense;
     count?: number;
   };
-}export interface ExpenseResponse {
+}
+
+export interface ExpenseResponse {
   success: boolean;
   expenses: Expense[];
   count: number;

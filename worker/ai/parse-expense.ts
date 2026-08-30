@@ -8,6 +8,8 @@ export interface ProcessedExpense {
   date?: string;
   message: string;
   success: boolean;
+  /** 解析来源：ai = AI 智能解析成功；fallback = 正则规则兜底 */
+  parsedBy: 'ai' | 'fallback';
   error?: string;
 }
 
@@ -23,7 +25,8 @@ export async function processExpenseInput(
     const userPrompt = getExpenseEntryPrompt(input, memberName, today);
 
     const response = await AI.run(
-      AI_CONFIG.model,
+      // workers-types 的 AiModels 未收录该 GA 版模型名，实际可用，断言绕过
+      AI_CONFIG.model as unknown as Parameters<typeof AI.run>[0],
       {
         messages: [
           {
@@ -51,42 +54,78 @@ export async function processExpenseInput(
     }
 
     if (!aiText) {
+      console.error('[parse-expense] AI returned empty output, fallback to regex. input:', input);
       return fallbackParsing(input);
     }
 
-    const jsonMatch = aiText.match(/\{[\s\S]*?\}/);
+    const parsed = extractJson(aiText);
 
-    if (!jsonMatch) {
+    if (!parsed) {
+      console.error('[parse-expense] AI output is not valid JSON, fallback to regex. input:', input, 'aiText:', aiText.slice(0, 500));
       return fallbackParsing(input);
     }
 
-    const parsed = JSON.parse(jsonMatch[0]);
-
-    if (!parsed.amount || !parsed.category || !parsed.message) {
+    if (
+      !parsed.amount ||
+      typeof parsed.category !== 'string' ||
+      typeof parsed.message !== 'string'
+    ) {
+      console.error('[parse-expense] AI JSON missing required fields, fallback to regex. input:', input, 'parsed:', JSON.stringify(parsed).slice(0, 500));
       return fallbackParsing(input);
     }
 
+    const merchant = typeof parsed.merchant === 'string' ? parsed.merchant : 'Unknown';
+    const category = parsed.category as ExpenseCategory | 'Income';
     const type: 'expense' | 'income' = parsed.type === 'income' ? 'income' : 'expense';
 
-    // 日期校验：仅接受 YYYY-MM-DD
+    // 日期校验：仅接受 YYYY-MM-DD，且要求输入中确有日期线索（防止小模型幻觉出日期）
     const date =
-      typeof parsed.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(parsed.date)
+      typeof parsed.date === 'string' &&
+      /^\d{4}-\d{2}-\d{2}$/.test(parsed.date) &&
+      DATE_CLUE_RE.test(input)
         ? parsed.date
         : undefined;
 
     return {
       amount: Number(parsed.amount),
-      merchant: parsed.merchant || 'Unknown',
-      category: parsed.category,
+      merchant,
+      category,
       type,
       date,
       message: parsed.message,
-      success: true
+      success: true,
+      parsedBy: 'ai'
     };
 
   } catch (error) {
+    console.error('[parse-expense] AI call failed, fallback to regex. input:', input, 'error:', error instanceof Error ? error.message : error);
     return fallbackParsing(input);
   }
+}
+
+// 输入中出现任一日期线索（用于抑制 AI 幻觉日期：没有日期词就不该有 date 字段）
+const DATE_CLUE_RE =
+  /今天|昨天|前天|大前天|\d+\s*天前|[周星期][一二三四五六日天末]|\d{4}[-/.年]|\d{1,2}\s*月|\d{1,2}\s*[日号]|\d{1,2}[-/]\d{1,2}(?!\d)/;
+
+/** 从 AI 输出中稳健提取 JSON：兼容 markdown 代码块、前后缀文字、嵌套对象 */
+function extractJson(text: string): Record<string, unknown> | null {
+  const candidates: string[] = [];
+  const fence = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+  if (fence?.[1]) candidates.push(fence[1]);
+  const first = text.indexOf('{');
+  const last = text.lastIndexOf('}');
+  if (first !== -1 && last > first) candidates.push(text.slice(first, last + 1));
+  const short = text.match(/\{[\s\S]*?\}/);
+  if (short) candidates.push(short[0]);
+  for (const c of candidates) {
+    try {
+      const obj = JSON.parse(c);
+      if (obj && typeof obj === 'object') return obj as Record<string, unknown>;
+    } catch {
+      // try next candidate
+    }
+  }
+  return null;
 }
 
 // Chinese numeral words → number, e.g. "三十五" → 35, "一百二" → 120, "两百五" → 250
@@ -257,7 +296,8 @@ function fallbackParsing(input: string): ProcessedExpense {
         ? `记录收入 ${amountText}（${merchant}）。`
         : `已记录 ${amountText}（${merchant} · ${category}）。`)
       : '请告诉我具体金额。',
-    success: amount > 0
+    success: amount > 0,
+    parsedBy: 'fallback'
   };
 }
 
@@ -283,8 +323,10 @@ export function extractDate(input: string): string | undefined {
   }
 
   // 8月31日 / 8月31号 / 8-31 / 8/31（年份取当前或 12 月时回退一年）
+  // 注意：裸月日不再接受 "." 分隔（避免「晚饭 11.8」的金额小数点被当成 11月8日）；
+  // "2025.11.8" 这类完整三段式日期仍由上面的 fullMatch（[-/.]）覆盖
   const monthDay = input.match(/(?:(\d{4})\s*年\s*)?(\d{1,2})\s*月\s*(\d{1,2})\s*[日号]/)
-    || input.match(/(?:(\d{4})[-/.])?(\d{1,2})[-/.](\d{1,2})(?!\d)/);
+    || input.match(/(?:(\d{4})[-/])?(\d{1,2})[-/](\d{1,2})(?!\d)/);
   if (monthDay) {
     const year = monthDay[1] ? Number(monthDay[1]) : undefined;
     return buildDateStr(year, Number(monthDay[2]), Number(monthDay[3]));

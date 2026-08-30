@@ -132,7 +132,7 @@ CRITICAL:
 export const SYSTEM_MESSAGE = `You are a bilingual financial assistant. You understand Chinese and English naturally, and reply in the user's language. You sound like a helpful friend, not a robot. Keep responses brief, casual, and varied.`;
 
 export const AI_CONFIG = {
-  model: '@cf/meta/llama-3.1-8b-instruct-awq',
+  model: '@cf/meta/llama-3.1-8b-instruct',
   temperature: 0.3,
-  max_tokens: 250
+  max_tokens: 400
 } as const;
