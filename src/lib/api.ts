@@ -2,11 +2,21 @@ import type { VoiceCommandResponse, ExpenseResponse, ChatResponse, Message } fro
 
 const API_BASE = import.meta.env.VITE_API_URL || '/api';
 
+function authHeaders(): Record<string, string> {
+  try {
+    const token = localStorage.getItem('auth_token');
+    if (token) return { Authorization: `Bearer ${token}` };
+  } catch {
+    // localStorage 不可用时仅依赖 Cookie
+  }
+  return {};
+}
+
 export const api = {
   async sendVoiceCommand(userId: string, input: string): Promise<VoiceCommandResponse> {
     const response = await fetch(`${API_BASE}/voice-command`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
       body: JSON.stringify({ userId, input }),
     });
 
@@ -18,7 +28,9 @@ export const api = {
   },
 
   async getExpenses(userId: string): Promise<ExpenseResponse> {
-    const response = await fetch(`${API_BASE}/expenses/${userId}`);
+    const response = await fetch(`${API_BASE}/expenses/${userId}`, {
+      headers: authHeaders(),
+    });
 
     if (!response.ok) {
       throw new Error('Failed to fetch expenses');
@@ -30,7 +42,7 @@ export const api = {
   async addExpense(userId: string, input: string): Promise<VoiceCommandResponse> {
     const response = await fetch(`${API_BASE}/expense-natural`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
       body: JSON.stringify({ userId, input }),
     });
 
@@ -44,6 +56,7 @@ export const api = {
   async clearExpenses(userId: string): Promise<void> {
     const response = await fetch(`${API_BASE}/expenses/${userId}`, {
       method: 'DELETE',
+      headers: authHeaders(),
     });
 
     if (!response.ok) {
@@ -52,7 +65,9 @@ export const api = {
   },
 
   async getChatHistory(userId: string): Promise<ChatResponse> {
-    const response = await fetch(`${API_BASE}/chat/${userId}`);
+    const response = await fetch(`${API_BASE}/chat/${userId}`, {
+      headers: authHeaders(),
+    });
 
     if (!response.ok) {
       throw new Error('Failed to fetch chat history');
@@ -64,7 +79,7 @@ export const api = {
   async saveChatMessage(userId: string, message: Message): Promise<void> {
     const response = await fetch(`${API_BASE}/chat/${userId}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
       body: JSON.stringify(message),
     });
 
@@ -76,6 +91,7 @@ export const api = {
   async clearChatHistory(userId: string): Promise<void> {
     const response = await fetch(`${API_BASE}/chat/${userId}`, {
       method: 'DELETE',
+      headers: authHeaders(),
     });
 
     if (!response.ok) {

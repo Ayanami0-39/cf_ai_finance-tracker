@@ -3,6 +3,7 @@ import { TopBar } from "./components/TopBar";
 import { ChatSection } from "./components/ChatSection";
 import { ExpensesSection } from "./components/ExpensesSection";
 import { VoiceMode } from "./components/VoiceMode";
+import { AuthGate } from "./components/AuthGate";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { api } from "./lib/api";
 import { getUserId } from "./lib/user";
@@ -139,8 +140,9 @@ function App() {
   };
 
   return (
-    <div className="h-screen flex flex-col bg-background">
-      <TopBar />
+    <AuthGate>
+      <div className="h-screen flex flex-col bg-background">
+        <TopBar />
 
       <div className="hidden md:flex flex-1 overflow-hidden">
         <div className="w-[50%] h-full ml-[8%]">
@@ -197,7 +199,8 @@ function App() {
         onMessageReceived={handleVoiceMessageReceived}
         onUserMessage={handleVoiceUserMessage}
       />
-    </div>
+      </div>
+    </AuthGate>
   );
 }
 

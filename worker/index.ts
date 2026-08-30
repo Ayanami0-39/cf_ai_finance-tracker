@@ -7,15 +7,57 @@ import { INTENTS } from "./ai/prompts/intent-classification";
 import { classifyIntent } from "./ai/classify-intent";
 import { queryExpenses } from "./ai/query-expenses";
 import { identifyExpenseToDelete } from "./ai/delete-expense";
+import {
+  deriveToken,
+  verifyRequest,
+  handleAuthVerify,
+  authNotConfiguredResponse,
+  loginPageResponse,
+} from './auth';
 
 export { FinanceMemory };
 
 interface Env {
   AI: Ai;
   FINANCE_MEMORY: DurableObjectNamespace<FinanceMemory>;
+  AUTH_PASSWORD?: string;
+  ASSETS: Fetcher;
 }
 
 const app = new Hono<{ Bindings: Env }>();
+
+// ---- 密码门禁：所有请求（页面、静态资源、API）先过鉴权 ----
+app.use('/*', async (c, next) => {
+  const { pathname } = new URL(c.req.raw.url);
+  const password = c.env.AUTH_PASSWORD;
+
+  // /auth 端点本身：未配置密码时也响应（登录页会给出配置提示）
+  if (pathname === '/auth') {
+    if (!password) {
+      return c.req.method === 'GET'
+        ? authNotConfiguredResponse(pathname)
+        : handleAuthVerify(c.req.raw, '');
+    }
+    return handleAuthVerify(c.req.raw, password);
+  }
+
+  // 未配置密码 → 锁定全部内容（fail-closed）
+  if (!password) {
+    return authNotConfiguredResponse(pathname);
+  }
+
+  const expected = await deriveToken(password);
+  if (!verifyRequest(c.req.raw, expected)) {
+    return loginPageResponse();
+  }
+
+  // 鉴权通过后，非 API 请求转发给静态资源服务（页面、JS、CSS 等）
+  if (!pathname.startsWith('/api/')) {
+    return c.env.ASSETS.fetch(c.req.raw);
+  }
+
+  await next();
+});
 
 app.use('/*', cors());
 
