@@ -101,7 +101,7 @@ export async function processExpenseInput(
       category,
       type,
       date,
-      message: parsed.message,
+      message: typeof parsed.message === 'string' ? parsed.message : 'OK',
       success: true,
       parsedBy: 'ai'
     };

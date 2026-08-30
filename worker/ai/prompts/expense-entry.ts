@@ -125,7 +125,7 @@ OUTPUT FORMAT (CRITICAL - your ENTIRE response is machine-parsed as JSON):
 
 CRITICAL:
 1. Your ENTIRE response must be ONE raw JSON object: the first character is { and the last character is }
-2. NO markdown code blocks (never use ```), NO explanation, NO text before or after the JSON
+2. NO markdown code blocks (never wrap output in triple backticks), NO explanation, NO text before or after the JSON
 3. Field names and string values use double quotes; "amount" is a bare number (35, never "35元")
 4. Keep "message" short (1-2 sentences)
 5. VARY your response style - don't be repetitive!`;
