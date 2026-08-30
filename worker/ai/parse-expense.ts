@@ -138,18 +138,36 @@ function numeralWordsToNumber(text: string): number | null {
 
 // Extract amount supporting $, ¥, 元/块/刀 suffixes and Chinese numeral phrases
 function extractAmount(input: string): number {
-  // Arabic numbers with optional money affixes, "50块5" → 50.5
-  const arabicMatch = input.match(/(?:[$¥]|\b)\s*(\d+(?:\.\d+)?)(?:\s*(?:元|刀)|(?:\s*块(?:钱)?([05])?))?/);
+  // 先剥离日期/时间片段，避免「8月27号工资」的 8、27 被误当成金额
+  const cleaned = input
+    .replace(/\d{1,2}\s*月\s*\d{1,2}\s*[日号]/g, ' ') // 8月27号 / 8月27日
+    .replace(/\d{1,2}\s*月/g, ' ')                    // 8月
+    .replace(/\d{1,2}\s*[日号]/g, ' ')                // 27号 / 27日
+    .replace(/\d{4}\s*年/g, ' ')                      // 2026年
+    .replace(/\d+\s*天前/g, ' ')                      // 3天前
+    .replace(/\d{1,2}:\d{2}/g, ' ');                  // 时间 12:30
+
+  // 1) 千分位数字（如 25,000 / 1,500.50）必然是金额
+  const commaMatch = cleaned.match(/\d{1,3}(?:,\d{3})+(?:\.\d+)?/);
+  if (commaMatch) {
+    const amount = parseFloat(commaMatch[0].replace(/,/g, ''));
+    if (amount > 0) return amount;
+  }
+
+  // 2) Arabic numbers with optional money affixes, "50块5" → 50.5
+  const arabicMatch = cleaned.match(
+    /(?:[$¥]\s*)?(\d+(?:\.\d+)?)(?:\s*(?:元|刀)|(\s*块(?:钱)?([05])?))?/
+  );
   if (arabicMatch) {
     let amount = parseFloat(arabicMatch[1]);
-    if (arabicMatch[2] !== undefined) {
-      amount += Number(arabicMatch[2]) * 0.1; // 块X: X毛 → X*0.1元
+    if (arabicMatch[3] !== undefined) {
+      amount += Number(arabicMatch[3]) * 0.1; // 块X: X毛 → X*0.1元
     }
     if (amount > 0) return amount;
   }
 
-  // Chinese numeral phrase followed by optional money suffix
-  const cnMatch = input.match(/([零一二两三四五六七八九十百千万]+)(?:块([五5])|元|刀|块钱)?/);
+  // 3) Chinese numeral phrase followed by optional money suffix
+  const cnMatch = cleaned.match(/([零一二两三四五六七八九十百千万]+)(?:块([五5])|元|刀|块钱)?/);
   if (cnMatch) {
     const value = numeralWordsToNumber(cnMatch[1]);
     if (value !== null && value > 0) {

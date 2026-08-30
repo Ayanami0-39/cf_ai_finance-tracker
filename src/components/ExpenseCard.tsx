@@ -1,6 +1,5 @@
 import { useState } from "react";
 import type { Expense } from "@/types";
-import type { FamilyMember } from "@/lib/family";
 import {
   ShoppingBag,
   Coffee,
@@ -21,7 +20,7 @@ import {
 
 interface ExpenseCardProps {
   expense: Expense;
-  members?: FamilyMember[];
+  member?: { name: string; emoji: string };
   onDelete?: (id: string) => void;
 }
 
@@ -51,14 +50,11 @@ function resolveIcon(category: string): React.ReactNode {
   );
 }
 
-export function ExpenseCard({ expense, members, onDelete }: ExpenseCardProps) {
+export function ExpenseCard({ expense, member, onDelete }: ExpenseCardProps) {
   const [confirming, setConfirming] = useState(false);
   const isIncome = expense.type === "income";
   const icon = resolveIcon(expense.category);
-  const byMember =
-    (expense.byId && members?.find((m) => m.id === expense.byId)) ||
-    (expense.by && members?.find((m) => m.name === expense.by)) ||
-    undefined;
+  const byMember = member;
 
   return (
     <div className="flex items-center gap-3 py-3 px-4 border-b last:border-b-0 hover:bg-muted/40 transition-colors">

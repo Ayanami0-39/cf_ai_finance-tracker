@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { FinanceMemory } from './durable-objects/FinanceMemory';
+import { UserRegistry } from './durable-objects/UserRegistry';
 import type { Expense } from './types/expense';
 import { processExpenseInput } from "./ai/parse-expense";
 import { INTENTS } from "./ai/prompts/intent-classification";
@@ -16,10 +17,12 @@ import {
 } from './auth';
 
 export { FinanceMemory };
+export { UserRegistry } from './durable-objects/UserRegistry';
 
 interface Env {
   AI: Ai;
   FINANCE_MEMORY: DurableObjectNamespace<FinanceMemory>;
+  USER_REGISTRY: DurableObjectNamespace<UserRegistry>;
   AUTH_PASSWORD?: string;
   ASSETS: Fetcher;
 }
@@ -653,6 +656,243 @@ app.delete('/api/family/:scopeId/members/:memberId', async (c) => {
 
     const members = await stub.removeFamilyMember(memberId);
     return c.json({ success: true, members });
+  } catch (err) {
+    return c.json({ success: false, error: String(err) }, 500);
+  }
+});
+
+// ---- Identity merge: 把源作用域（旧设备 ID）的数据合并到目标作用域（本机 ID） ----
+app.post('/api/identity/merge', async (c) => {
+  try {
+    const { sourceScopeId, targetScopeId } = await c.req.json();
+
+    if (!sourceScopeId || !targetScopeId || sourceScopeId === targetScopeId) {
+      return c.json({ success: false, error: 'sourceScopeId and targetScopeId required' }, 400);
+    }
+
+    const sourceId = c.env.FINANCE_MEMORY.idFromName(sourceScopeId);
+    const sourceStub = c.env.FINANCE_MEMORY.get(sourceId);
+    const targetId = c.env.FINANCE_MEMORY.idFromName(targetScopeId);
+    const targetStub = c.env.FINANCE_MEMORY.get(targetId);
+
+    // 读取源作用域的全部数据
+    const [expenses, chat] = await Promise.all([
+      sourceStub.getExpenses(),
+      sourceStub.getChatMessages(),
+    ]);
+
+    // 合并（按 id 去重）到目标作用域
+    const importedExpenses = expenses.length
+      ? await targetStub.importExpenses(expenses)
+      : 0;
+    const importedChat = chat.length
+      ? await targetStub.importChatMessages(chat)
+      : 0;
+
+    return c.json({
+      success: true,
+      importedExpenses,
+      importedChat,
+      sourceCount: expenses.length,
+    });
+  } catch (err) {
+    return c.json({ success: false, error: String(err) }, 500);
+  }
+});
+
+// ---- Account endpoints（用户名+密码登录，资料存服务端） ----
+
+function registryStub(c: { env: Env }) {
+  const id = c.env.USER_REGISTRY.idFromName('global');
+  return c.env.USER_REGISTRY.get(id);
+}
+
+function makeSessionToken(username: string, passHash: string): string {
+  // base64url(username:passHash) —— 无状态会话，密码修改后自动失效
+  const raw = `${username}:${passHash}`;
+  const bytes = new TextEncoder().encode(raw);
+  let bin = '';
+  for (const b of bytes) bin += String.fromCharCode(b);
+  return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+function parseSessionToken(
+  token: string
+): { username: string; passHash: string } | null {
+  try {
+    const b64 = token.replace(/-/g, '+').replace(/_/g, '/');
+    const pad = b64.length % 4 ? '='.repeat(4 - (b64.length % 4)) : '';
+    const bin = atob(b64 + pad);
+    const idx = bin.indexOf(':');
+    if (idx <= 0) return null;
+    return { username: bin.slice(0, idx), passHash: bin.slice(idx + 1) };
+  } catch {
+    return null;
+  }
+}
+
+async function sessionFromRequest(
+  c: { req: { raw: Request } },
+  registry: Awaited<ReturnType<typeof registryStub>>
+) {
+  const req = c.req.raw;
+  let token: string | null = null;
+  const auth = req.headers.get('Authorization');
+  if (auth?.startsWith('Account ')) token = auth.slice(8).trim();
+  if (!token) {
+    const cookie = req.headers.get('Cookie') || '';
+    for (const pair of cookie.split(/;\s*/)) {
+      const eq = pair.indexOf('=');
+      if (eq > 0 && pair.slice(0, eq) === 'account_session') token = pair.slice(eq + 1);
+    }
+  }
+  if (!token) return null;
+  const session = parseSessionToken(token);
+  if (!session) return null;
+  const account = await registry.getProfile(session.username);
+  if (!account || account.passHash !== session.passHash) return null; // 改密码后旧会话失效
+  return account;
+}
+
+app.post('/api/account/register', async (c) => {
+  try {
+    const { username, password } = await c.req.json();
+    if (!username || !password)
+      return c.json({ success: false, error: '用户名和密码不能为空' }, 400);
+
+    const registry = registryStub(c);
+    const result = await registry.register(username, password);
+    if (!result.ok || !result.account) {
+      return c.json({ success: false, error: result.error }, 400);
+    }
+
+    const token = makeSessionToken(result.account.username, result.account.passHash);
+    return c.json({
+      success: true,
+      token,
+      account: {
+        username: result.account.username,
+        displayName: result.account.displayName,
+        emoji: result.account.emoji,
+        scopeId: result.account.scopeId,
+      },
+    }, 200, {
+      'Set-Cookie':
+        `account_session=${token}; Path=/; Max-Age=31536000; HttpOnly; Secure; SameSite=Lax`,
+    });
+  } catch (err) {
+    return c.json({ success: false, error: String(err) }, 500);
+  }
+});
+
+app.post('/api/account/login', async (c) => {
+  try {
+    const { username, password } = await c.req.json();
+    if (!username || !password)
+      return c.json({ success: false, error: '用户名和密码不能为空' }, 400);
+
+    const registry = registryStub(c);
+    const result = await registry.verify(username, password);
+    if (!result.ok || !result.account) {
+      await new Promise((r) => setTimeout(r, 150 + Math.floor(Math.random() * 150)));
+      return c.json({ success: false, error: result.error }, 401);
+    }
+
+    const token = makeSessionToken(username, result.account.passHash);
+    return c.json({
+      success: true,
+      token,
+      account: {
+        username: result.account.username,
+        displayName: result.account.displayName,
+        emoji: result.account.emoji,
+        scopeId: result.account.scopeId,
+      },
+    }, 200, {
+      'Set-Cookie':
+        `account_session=${token}; Path=/; Max-Age=31536000; HttpOnly; Secure; SameSite=Lax`,
+    });
+  } catch (err) {
+    return c.json({ success: false, error: String(err) }, 500);
+  }
+});
+
+// 当前账号资料（按会话令牌）
+app.get('/api/account/me', async (c) => {
+  try {
+    const registry = registryStub(c);
+    const account = await sessionFromRequest(c, registry);
+    if (!account) return c.json({ success: false, error: '未登录' }, 401);
+    return c.json({
+      success: true,
+      account: {
+        username: account.username,
+        displayName: account.displayName,
+        emoji: account.emoji,
+        scopeId: account.scopeId,
+      },
+    });
+  } catch (err) {
+    return c.json({ success: false, error: String(err) }, 500);
+  }
+});
+
+// 修改昵称/头像（服务端，全设备生效）
+app.patch('/api/account/me', async (c) => {
+  try {
+    const registry = registryStub(c);
+    const account = await sessionFromRequest(c, registry);
+    if (!account) return c.json({ success: false, error: '未登录' }, 401);
+
+    const patch = await c.req.json();
+    const result = await registry.updateProfile(account.username, patch);
+    if (!result.ok || !result.account) {
+      return c.json({ success: false, error: result.error }, 400);
+    }
+    return c.json({
+      success: true,
+      account: {
+        username: result.account.username,
+        displayName: result.account.displayName,
+        emoji: result.account.emoji,
+        scopeId: result.account.scopeId,
+      },
+    });
+  } catch (err) {
+    return c.json({ success: false, error: String(err) }, 500);
+  }
+});
+
+// 修改密码（旧会话全部失效，需重新登录）
+app.post('/api/account/me/password', async (c) => {
+  try {
+    const registry = registryStub(c);
+    const account = await sessionFromRequest(c, registry);
+    if (!account) return c.json({ success: false, error: '未登录' }, 401);
+
+    const { oldPassword, newPassword } = await c.req.json();
+    const result = await registry.changePassword(
+      account.username,
+      String(oldPassword || ''),
+      String(newPassword || '')
+    );
+    if (!result.ok) return c.json({ success: false, error: result.error }, 400);
+    return c.json({ success: true });
+  } catch (err) {
+    return c.json({ success: false, error: String(err) }, 500);
+  }
+});
+
+// 按用户名查询公开资料（昵称+头像）——账单/聊天展示"谁记的"用
+app.get('/api/account/profile/:username', async (c) => {
+  try {
+    const registry = registryStub(c);
+    const account = await registry.getProfile(c.req.param('username'));
+    if (!account) return c.json({ success: false, error: '用户不存在' }, 404);
+    return c.json({
+      success: true,
+      profile: { displayName: account.displayName, emoji: account.emoji },
+    });
   } catch (err) {
     return c.json({ success: false, error: String(err) }, 500);
   }

@@ -1,6 +1,7 @@
+import { useState, useEffect } from "react";
 import { SummaryCards } from "./SummaryCard";
 import { ExpenseCard } from "./ExpenseCard";
-import { getMembers } from "@/lib/family";
+import { accountApi, getAccount, type AccountInfo } from "@/lib/account";
 import type { Expense } from "@/types";
 
 interface ExpensesSectionProps {
@@ -14,7 +15,37 @@ export function ExpensesSection({
   onDeleteExpense,
 }: ExpensesSectionProps) {
   const sorted = [...expenses].sort((a, b) => b.createdAt - a.createdAt);
-  const members = getMembers();
+
+  // 记录者资料从服务端解析：byId 优先（账号名），回退 by（昵称）
+  const [profiles, setProfiles] = useState<Record<string, { displayName: string; emoji: string }>>({});
+  const me: AccountInfo | null = getAccount();
+
+  useEffect(() => {
+    const keys = new Set<string>();
+    for (const e of sorted) {
+      if (e.byId) keys.add(e.byId);
+      else if (e.by) keys.add(e.by);
+    }
+    const missing = [...keys].filter((k) => !(k in profiles));
+    if (missing.length === 0) return;
+    let cancelled = false;
+    accountApi.getProfiles(missing).then((map) => {
+      if (!cancelled) setProfiles((prev) => ({ ...prev, ...map }));
+    });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [expenses.length]);
+
+  const resolveMember = (e: Expense) => {
+    const key = e.byId || e.by;
+    const p = key ? profiles[key] : undefined;
+    if (p) return { name: p.displayName, emoji: p.emoji };
+    if (me && (e.byId === me.username || e.by === me.displayName))
+      return { name: me.displayName, emoji: me.emoji };
+    return undefined;
+  };
 
   return (
     <div className="flex flex-col h-full">
@@ -47,7 +78,7 @@ export function ExpensesSection({
               <ExpenseCard
                 key={expense.id}
                 expense={expense}
-                members={members}
+                member={resolveMember(expense)}
                 onDelete={onDeleteExpense}
               />
             ))}

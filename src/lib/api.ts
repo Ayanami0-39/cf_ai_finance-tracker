@@ -199,6 +199,18 @@ export const api = {
     return response.json();
   },
 
+  async mergeIdentity(
+    sourceScopeId: string,
+    targetScopeId: string
+  ): Promise<{ success: boolean; importedExpenses?: number; importedChat?: number }> {
+    const response = await fetch(`${API_BASE}/identity/merge`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify({ sourceScopeId, targetScopeId }),
+    });
+    return response.json();
+  },
+
   async syncMemberProfile(
     scopeId: string,
     member: { id: string; name: string; emoji: string }

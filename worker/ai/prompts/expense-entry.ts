@@ -54,6 +54,8 @@ AMOUNT EXTRACTION RULES:
 - "$50", "50 dollars", "fifty dollars", "50 bucks", "80刀" → 80
 - "¥35", "35元", "七块" → 7
 - "50块" → 50, "35块5" → 35.5, "五十三块五" → 53.5
+- "25,000" / "1,500" → strip thousands separators → 25000 / 1500 (commas are NOT decimal points)
+- Numbers inside dates ("8月27号", "2026年") are DATES, never amounts
 - Chinese numerals: 一~十百千万, 两 → digits; 十五→15; 二十三→23; 一百二→120; 两百五→250
 - If ambiguous, best guess. Always return a number.
 
@@ -98,6 +100,9 @@ Output: { "type": "income", "amount": 8000, "merchant": "工资", "category": "I
 
 Input: "8月31日工资3000¥"
 Output: { "type": "income", "amount": 3000, "merchant": "工资", "category": "Income", "date": "2026-08-31", "message": "8月31日的工资 3000 元已入账。💰" }
+
+Input: "8月27号工资25,000"
+Output: { "type": "income", "amount": 25000, "merchant": "工资", "category": "Income", "date": "2026-08-27", "message": "8月27日的工资 25000 元已入账。💰" }
 
 Input: "昨天打车花了30"
 Output: { "type": "expense", "amount": 30, "merchant": "打车", "category": "Transportation", "date": "2026-08-29", "message": "昨天的打车费 30 元已记录。" }

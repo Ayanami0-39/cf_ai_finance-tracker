@@ -2,8 +2,7 @@ import { useState, useCallback, useRef, useEffect } from 'react';
 import { useSpeechRecognition } from './useSpeechRecognition';
 import { useElevenLabs } from './useElevenLabs';
 import { api } from '@/lib/api';
-import { getScopeId } from '@/lib/scope';
-import { getMembers, getActiveMemberId } from '@/lib/family';
+import { getAccount } from '@/lib/account';
 
 type Phase = 'idle' | 'listening' | 'thinking' | 'speaking' | 'error';
 
@@ -46,15 +45,13 @@ export function useVoiceConversation(
   // Query the server with user input using our existing API
   const queryServer = useCallback(async (message: string): Promise<{ response: string; expense?: unknown }> => {
     try {
-      const scopeId = getScopeId();
-      const members = getMembers();
-      const activeId = getActiveMemberId(members);
-      const memberName = members.find((m) => m.id === activeId)?.name;
+      const account = getAccount();
+      if (!account) throw new Error('未登录，请先登录账号');
       const result = await api.sendVoiceCommand({
-        userId: scopeId,
+        userId: account.scopeId,
         input: message,
-        memberName,
-        memberId: activeId,
+        memberName: account.displayName,
+        memberId: account.username,
       });
 
       if (!result.success) {

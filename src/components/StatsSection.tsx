@@ -1,6 +1,6 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import type { Expense } from "@/types";
-import { getMembers } from "@/lib/family";
+import { accountApi } from "@/lib/account";
 import {
   aggregateMonth,
   categorySlices,
@@ -30,14 +30,38 @@ export function StatsSection({ expenses }: StatsSectionProps) {
   const [cursor, setCursor] = useState<string>(() => monthKey(new Date()));
   const [memberFilter, setMemberFilter] = useState<string>("all");
 
-  const members = getMembers();
+  // 成员筛选来源：账单中出现过的记录者（byId 优先，旧数据回退 by 名字）
+  const [profiles, setProfiles] = useState<Record<string, { displayName: string; emoji: string }>>({});
+  const memberKeys = useMemo(() => {
+    const set = new Map<string, string>(); // key -> 展示名兜底
+    for (const e of expenses) {
+      const key = e.byId || e.by;
+      if (key && !set.has(key)) set.set(key, e.by || key);
+    }
+    return [...set.entries()];
+  }, [expenses]);
+
+  useEffect(() => {
+    const missing = memberKeys.map(([k]) => k).filter((k) => !(k in profiles));
+    if (missing.length === 0) return;
+    let cancelled = false;
+    accountApi.getProfiles(missing).then((map) => {
+      if (!cancelled) setProfiles((prev) => ({ ...prev, ...map }));
+    });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [memberKeys]);
+
+  const memberNameOf = (key: string) => profiles[key]?.displayName || memberKeys.find(([k]) => k === key)?.[1] || key;
+  const memberEmojiOf = (key: string) => profiles[key]?.emoji || "🙂";
+
   // 按成员过滤（默认「全部成员」）：byId 精确匹配，by 名字兜底旧数据
   const filtered = useMemo(() => {
     if (memberFilter === "all") return expenses;
     return expenses.filter(
-      (e) =>
-        e.byId === memberFilter ||
-        (!e.byId && e.by && e.by === members.find((m) => m.id === memberFilter)?.name)
+      (e) => e.byId === memberFilter || (!e.byId && e.by === memberFilter)
     );
   }, [expenses, memberFilter]);
 
@@ -67,7 +91,7 @@ export function StatsSection({ expenses }: StatsSectionProps) {
   const filterLabel =
     memberFilter === "all"
       ? "全部成员"
-      : members.find((m) => m.id === memberFilter)?.name || "全部成员";
+      : memberNameOf(memberFilter);
 
   return (
     <div className="h-full overflow-y-auto bg-background">
@@ -91,7 +115,7 @@ export function StatsSection({ expenses }: StatsSectionProps) {
               <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs pointer-events-none">
                 {memberFilter === "all"
                   ? "👥"
-                  : members.find((m) => m.id === memberFilter)?.emoji || "👥"}
+                  : memberEmojiOf(memberFilter)}
               </span>
               <select
                 value={memberFilter}
@@ -100,9 +124,9 @@ export function StatsSection({ expenses }: StatsSectionProps) {
                 className="appearance-none h-8 pl-7 pr-7 text-xs rounded-lg border bg-card text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 cursor-pointer max-w-[130px]"
               >
                 <option value="all">全部成员</option>
-                {members.map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.name}
+                {memberKeys.map(([key, fallback]) => (
+                  <option key={key} value={key}>
+                    {memberNameOf(key) === key && fallback ? fallback : memberNameOf(key)}
                   </option>
                 ))}
               </select>

@@ -5,12 +5,12 @@ import { ExpensesSection } from "./components/ExpensesSection";
 import { StatsSection } from "./components/StatsSection";
 import { VoiceMode } from "./components/VoiceMode";
 import { AuthGate } from "./components/AuthGate";
+import { AccountLogin } from "./components/AccountLogin";
+import { ProfileEditor } from "./components/ProfileEditor";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { MessageCircle, ReceiptText, BarChart3 } from "lucide-react";
 import { api } from "./lib/api";
-import { getMembers, getActiveMemberId, setActiveMemberId } from "./lib/family";
-import { getScopeId, verifyFamilyMembership } from "./lib/scope";
-import { getUserId } from "./lib/user";
+import { accountApi, getAccount, type AccountInfo } from "./lib/account";
 import type { Message, Expense } from "./types";
 import "./App.css";
 
@@ -19,46 +19,63 @@ function App() {
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isVoiceMode, setIsVoiceMode] = useState(false);
-  const [userId, setUserId] = useState<string>("");
+  const [account, setAccount] = useState<AccountInfo | null>(() => getAccount());
+  const [showProfile, setShowProfile] = useState(false);
   const [mobileTab, setMobileTab] = useState<"chat" | "expenses" | "stats">("chat");
 
-  // Initialize userId and load data
+  // 已有会话：打开应用时刷新服务端资料（其他设备改过昵称/头像也能同步）并加载数据
   useEffect(() => {
-    const members = getMembers();
-    const id = members.length > 0 ? getActiveMemberId(members) : getUserId();
-    setUserId(id);
-    loadExpenses(getScopeId());
-    loadChatHistory(getScopeId());
-
-    // 异步校验家庭资格：被移出家庭的设备自动退回个人模式
-    verifyFamilyMembership().then((stillInFamily) => {
-      if (!stillInFamily) {
-        setExpenses([]);
-        setMessages([]);
-        loadExpenses(getScopeId());
-        loadChatHistory(getScopeId());
+    if (!account) return;
+    accountApi.me().then((res) => {
+      if (res.success && res.account) {
+        setAccount(res.account);
+        loadExpenses(res.account.scopeId);
+        loadChatHistory(res.account.scopeId);
+      } else if (res.success === false && !res.account) {
+        // 未登录（无会话）：仅加载数据，交由 AccountLogin 处理登录
+        loadExpenses(account.scopeId);
+        loadChatHistory(account.scopeId);
       }
     });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const handleMemberChange = (id: string) => {
-    setActiveMemberId(id);
-    setUserId(id);
-    // 家庭模式下数据共享，成员切换只换身份；个人模式换成员即换数据
-    const scope = getScopeId();
+  const handleLogin = (acct: AccountInfo) => {
+    setAccount(acct);
     setExpenses([]);
     setMessages([]);
-    loadExpenses(scope);
-    loadChatHistory(scope);
+    loadExpenses(acct.scopeId);
+    loadChatHistory(acct.scopeId);
+
+    // 一次性迁移：把本机旧数据（升级前的随机 userId 作用域）并入账号
+    try {
+      const legacyId = localStorage.getItem("finance_tracker_user_id");
+      const migrated = localStorage.getItem("account_migrated");
+      if (legacyId && !migrated && legacyId !== acct.scopeId) {
+        api.mergeIdentity(legacyId, acct.scopeId).finally(() => {
+          localStorage.setItem("account_migrated", "1");
+          loadExpenses(acct.scopeId);
+        });
+      }
+    } catch {
+      // 迁移失败不影响登录
+    }
   };
 
-  const handleScopeChange = () => {
-    // 家庭创建/加入/退出后：重载当前作用域数据
-    const scope = getScopeId();
-    setExpenses([]);
-    setMessages([]);
-    loadExpenses(scope);
-    loadChatHistory(scope);
+  const handleProfileSaved = (acct: AccountInfo) => {
+    setAccount(acct);
+  };
+
+  const handleDeleteExpense = async (expenseId: string) => {
+    if (!account) return;
+    // 乐观更新：先移除本地，再请求后端
+    setExpenses((prev) => prev.filter((e) => e.id !== expenseId));
+    try {
+      await api.deleteExpense(account.scopeId, expenseId);
+    } catch {
+      // 失败时回滚重新拉取
+      loadExpenses(account.scopeId);
+    }
   };
 
   const loadExpenses = async (uid: string) => {
@@ -69,17 +86,6 @@ function App() {
       }
     } catch (error) {
       // Error loading expenses
-    }
-  };
-
-  const handleDeleteExpense = async (expenseId: string) => {
-    // 乐观更新：先移除本地，再请求后端
-    setExpenses((prev) => prev.filter((e) => e.id !== expenseId));
-    try {
-      await api.deleteExpense(getScopeId(), expenseId);
-    } catch {
-      // 失败时回滚重新拉取
-      loadExpenses(getScopeId());
     }
   };
 
@@ -95,20 +101,22 @@ function App() {
   };
 
   const saveChatMessage = async (message: Message) => {
+    if (!account) return;
     try {
-      await api.saveChatMessage(getScopeId(), message);
+      await api.saveChatMessage(account.scopeId, message);
     } catch (error) {
       // Error saving chat message
     }
   };
 
   const handleSendMessage = async (input: string) => {
+    if (!account) return;
     const userMessage: Message = {
       id: crypto.randomUUID(),
       role: "user",
       content: input,
       timestamp: Date.now(),
-      by: getMembers().find((m) => m.id === userId)?.name,
+      by: account.displayName,
     };
     setMessages((prev) => [...prev, userMessage]);
 
@@ -118,13 +126,11 @@ function App() {
     setIsLoading(true);
 
     try {
-      const members = getMembers();
-      const memberName = members.find((m) => m.id === userId)?.name;
       const response = await api.sendVoiceCommand({
-        userId: getScopeId(),
+        userId: account.scopeId,
         input,
-        memberName,
-        memberId: userId,
+        memberName: account.displayName,
+        memberId: account.username,
       });
 
       const aiMessage: Message = {
@@ -147,7 +153,7 @@ function App() {
       // Save AI message
       saveChatMessage(aiMessage);
 
-      await loadExpenses(getScopeId());
+      await loadExpenses(account.scopeId);
     } catch {
       const errorMessage: Message = {
         id: crypto.randomUUID(),
@@ -165,12 +171,13 @@ function App() {
   };
 
   const handleVoiceUserMessage = (message: string) => {
+    if (!account) return;
     const userMessage: Message = {
       id: crypto.randomUUID(),
       role: "user",
       content: message,
       timestamp: Date.now(),
-      by: getMembers().find((m) => m.id === userId)?.name,
+      by: account.displayName,
     };
     setMessages((prev) => [...prev, userMessage]);
 
@@ -190,15 +197,27 @@ function App() {
     // Save voice message
     saveChatMessage(aiMessage);
 
-    if (expense) {
-      loadExpenses(getScopeId());
+    if (expense && account) {
+      loadExpenses(account.scopeId);
     }
   };
+
+  // 未登录：显示账号登录/注册页（包在 AuthGate 内，仍需先过访问密码）
+  if (!account) {
+    return (
+      <AuthGate>
+        <AccountLogin onLogin={handleLogin} />
+      </AuthGate>
+    );
+  }
 
   return (
     <AuthGate>
       <div className="h-screen flex flex-col bg-background">
-        <TopBar onMemberChange={handleMemberChange} onScopeChange={handleScopeChange} />
+        <TopBar
+          account={account}
+          onEditProfile={() => setShowProfile(true)}
+        />
 
       <div className="hidden md:flex flex-1 overflow-hidden">
         <div className="w-[50%] h-full ml-[8%]">
@@ -267,6 +286,14 @@ function App() {
         onMessageReceived={handleVoiceMessageReceived}
         onUserMessage={handleVoiceUserMessage}
       />
+
+      {showProfile && (
+        <ProfileEditor
+          account={account}
+          onClose={() => setShowProfile(false)}
+          onSaved={handleProfileSaved}
+        />
+      )}
       </div>
     </AuthGate>
   );

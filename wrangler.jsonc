@@ -23,6 +23,10 @@
 			{
 				"name": "FINANCE_MEMORY",
 				"class_name": "FinanceMemory"
+			},
+			{
+				"name": "USER_REGISTRY",
+				"class_name": "UserRegistry"
 			}
 		]
 	},
@@ -31,6 +35,12 @@
 			"tag": "v1",
 			"new_sqlite_classes": [
 				"FinanceMemory"
+			]
+		},
+		{
+			"tag": "v2",
+			"new_sqlite_classes": [
+				"UserRegistry"
 			]
 		}
 	]
