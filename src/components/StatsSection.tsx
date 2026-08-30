@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import type { Expense } from "@/types";
+import { getMembers } from "@/lib/family";
 import {
   aggregateMonth,
   categorySlices,
@@ -27,19 +28,31 @@ interface StatsSectionProps {
 
 export function StatsSection({ expenses }: StatsSectionProps) {
   const [cursor, setCursor] = useState<string>(() => monthKey(new Date()));
+  const [memberFilter, setMemberFilter] = useState<string>("all");
 
-  const agg = useMemo(() => aggregateMonth(expenses, cursor), [expenses, cursor]);
+  const members = getMembers();
+  // 按成员过滤（默认「全部成员」）：byId 精确匹配，by 名字兜底旧数据
+  const filtered = useMemo(() => {
+    if (memberFilter === "all") return expenses;
+    return expenses.filter(
+      (e) =>
+        e.byId === memberFilter ||
+        (!e.byId && e.by && e.by === members.find((m) => m.id === memberFilter)?.name)
+    );
+  }, [expenses, memberFilter]);
+
+  const agg = useMemo(() => aggregateMonth(filtered, cursor), [filtered, cursor]);
   const prevAgg = useMemo(
-    () => aggregateMonth(expenses, shiftMonth(cursor, -1)),
-    [expenses, cursor]
+    () => aggregateMonth(filtered, shiftMonth(cursor, -1)),
+    [filtered, cursor]
   );
   const lastYearAgg = useMemo(
-    () => aggregateMonth(expenses, shiftMonth(cursor, -12)),
-    [expenses, cursor]
+    () => aggregateMonth(filtered, shiftMonth(cursor, -12)),
+    [filtered, cursor]
   );
   const trend = useMemo(
-    () => recentMonths(expenses, cursor, 6),
-    [expenses, cursor]
+    () => recentMonths(filtered, cursor, 6),
+    [filtered, cursor]
   );
   const slices = useMemo(() => categorySlices(agg.byCategory), [agg]);
 
@@ -49,14 +62,19 @@ export function StatsSection({ expenses }: StatsSectionProps) {
   const currentMonthKey = monthKey(new Date());
   const canGoNext = cursor < currentMonthKey;
 
-  const hasAny = expenses.some((e) => e.date?.slice(0, 7) === cursor);
+  const hasAny = filtered.some((e) => e.date?.slice(0, 7) === cursor);
+
+  const filterLabel =
+    memberFilter === "all"
+      ? "全部成员"
+      : members.find((m) => m.id === memberFilter)?.name || "全部成员";
 
   return (
     <div className="h-full overflow-y-auto bg-background">
       <div className="mx-auto w-full max-w-3xl px-4 md:px-6 py-4 pb-8">
         {/* Header */}
-        <div className="flex items-center justify-between mb-4">
-          <div>
+        <div className="flex items-center justify-between mb-4 gap-2">
+          <div className="min-w-0">
             <h2 className="text-base font-semibold text-foreground">
               统计分析 / Statistics
             </h2>
@@ -64,6 +82,33 @@ export function StatsSection({ expenses }: StatsSectionProps) {
               按月查看收支与分类占比
             </p>
           </div>
+          {/* Member filter */}
+          <label className="flex items-center gap-1.5 flex-shrink-0">
+            <span className="text-[10px] text-muted-foreground hidden sm:inline">
+              成员
+            </span>
+            <div className="relative">
+              <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs pointer-events-none">
+                {memberFilter === "all"
+                  ? "👥"
+                  : members.find((m) => m.id === memberFilter)?.emoji || "👥"}
+              </span>
+              <select
+                value={memberFilter}
+                onChange={(e) => setMemberFilter(e.target.value)}
+                aria-label="按成员筛选统计"
+                className="appearance-none h-8 pl-7 pr-7 text-xs rounded-lg border bg-card text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 cursor-pointer max-w-[130px]"
+              >
+                <option value="all">全部成员</option>
+                {members.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.name}
+                  </option>
+                ))}
+              </select>
+              <ChevronRight className="w-3 h-3 absolute right-2 top-1/2 -translate-y-1/2 rotate-90 text-muted-foreground pointer-events-none" />
+            </div>
+          </label>
         </div>
 
         {/* Month navigator */}
@@ -91,7 +136,7 @@ export function StatsSection({ expenses }: StatsSectionProps) {
         </div>
 
         {!hasAny ? (
-          <EmptyMonth />
+          <EmptyMonth memberName={filterLabel} />
         ) : (
           <div className="space-y-4">
             {/* Overview cards */}
@@ -189,10 +234,14 @@ export function StatsSection({ expenses }: StatsSectionProps) {
 
 // ---------- Sub components ----------
 
-function EmptyMonth() {
+function EmptyMonth({ memberName }: { memberName?: string }) {
   return (
     <div className="text-center py-16 bg-card rounded-xl border">
-      <p className="text-sm text-muted-foreground">该月份暂无数据</p>
+      <p className="text-sm text-muted-foreground">
+        {memberName && memberName !== "全部成员"
+          ? `${memberName}在该月份暂无数据`
+          : "该月份暂无数据"}
+      </p>
       <p className="text-xs text-muted-foreground/70 mt-2">
         在「对话」页记一笔，统计会自动更新
       </p>

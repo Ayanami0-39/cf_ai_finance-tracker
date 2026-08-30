@@ -10,6 +10,7 @@ export interface Expense {
   createdAt: number;
   type?: TrxType;
   by?: string;
+  byId?: string;
 }
 
 export interface AddExpenseRequest {

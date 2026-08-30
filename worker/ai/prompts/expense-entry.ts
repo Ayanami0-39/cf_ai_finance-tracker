@@ -17,13 +17,16 @@ export type ExpenseCategory = typeof EXPENSE_CATEGORIES[number];
 export const TRX_TYPES = ['expense', 'income'] as const;
 export type TrxType = typeof TRX_TYPES[number];
 
-export function getExpenseEntryPrompt(input: string, memberName?: string): string {
+export function getExpenseEntryPrompt(input: string, memberName?: string, today?: string): string {
   const memberLine = memberName
     ? `\nCURRENT USER: This entry is recorded by family member "${memberName}". You may address them naturally in the reply.\n`
     : "";
+  const todayLine = today
+    ? `\nTODAY'S DATE: ${today} (use this to resolve relative dates like 昨天/last Friday/8月31日)\n`
+    : "";
 
   return `You are a bilingual (Chinese/English) financial assistant helping a user log a transaction. The user may speak Chinese or English.
-${memberLine}
+${memberLine}${todayLine}
 USER SAID: "${input}"
 
 YOUR TASK:
@@ -31,13 +34,21 @@ YOUR TASK:
 2. Extract the amount
 3. Identify the merchant/source name
 4. Categorize the transaction
-5. Reply in the SAME language the user used (Chinese input → Chinese reply)
+5. Extract the transaction date if the user mentions one (see DATE RULES)
+6. Reply in the SAME language the user used (Chinese input → Chinese reply)
 
 TRANSACTION TYPE RULES:
 - Spent/paid/bought or 花了/买了/付了/消费/打车/充了 → expense
 - received/salary or 工资/到账/收了/收红包/转账收入/卖二手/报销/退款/奖金/利息 → income
 - Income keywords take priority; mixed sentence picks the DOMINANT transaction by amount
 - Example: "工资到账8000，花了50买咖啡" → type=income, amount=8000, category=Income, merchant=工资
+
+DATE RULES (IMPORTANT):
+- "8月31日工资3000" → date="YYYY-08-31" (year = current year unless it would be in the future, then last year)
+- "昨天花了50" → yesterday's date; "今天/前天/上周五/X天前" → resolve from TODAY'S DATE
+- "2025-08-31" / "2025年8月31日" → that exact date
+- NO date mentioned → omit the "date" field entirely (defaults to today)
+- Return date ONLY in "YYYY-MM-DD" format
 
 AMOUNT EXTRACTION RULES:
 - "$50", "50 dollars", "fifty dollars", "50 bucks", "80刀" → 80
@@ -85,6 +96,12 @@ Output: { "type": "expense", "amount": 35.5, "merchant": "午饭", "category": "
 Input: "工资到账8000"
 Output: { "type": "income", "amount": 8000, "merchant": "工资", "category": "Income", "message": "发工资啦！8000 元已入账。🎉" }
 
+Input: "8月31日工资3000¥"
+Output: { "type": "income", "amount": 3000, "merchant": "工资", "category": "Income", "date": "2026-08-31", "message": "8月31日的工资 3000 元已入账。💰" }
+
+Input: "昨天打车花了30"
+Output: { "type": "expense", "amount": 30, "merchant": "打车", "category": "Transportation", "date": "2026-08-29", "message": "昨天的打车费 30 元已记录。" }
+
 Input: "收了个红包 200 块"
 Output: { "type": "income", "amount": 200, "merchant": "红包", "category": "Income", "message": "收到 200 元红包，已入账！" }
 
@@ -97,6 +114,7 @@ OUTPUT FORMAT (JSON only, no explanation, no markdown):
   "amount": <number>,
   "merchant": "<string>",
   "category": "<category or Income>",
+  "date": "<YYYY-MM-DD, only when the user mentioned a date>",
   "message": "<natural confirmation in user's language>"
 }
 

@@ -1,5 +1,6 @@
 import { SummaryCards } from "./SummaryCard";
 import { ExpenseCard } from "./ExpenseCard";
+import { getMembers } from "@/lib/family";
 import type { Expense } from "@/types";
 
 interface ExpensesSectionProps {
@@ -13,6 +14,7 @@ export function ExpensesSection({
   onDeleteExpense,
 }: ExpensesSectionProps) {
   const sorted = [...expenses].sort((a, b) => b.createdAt - a.createdAt);
+  const members = getMembers();
 
   return (
     <div className="flex flex-col h-full">
@@ -45,6 +47,7 @@ export function ExpensesSection({
               <ExpenseCard
                 key={expense.id}
                 expense={expense}
+                members={members}
                 onDelete={onDeleteExpense}
               />
             ))}

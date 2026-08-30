@@ -8,6 +8,7 @@ export interface Expense {
   createdAt: number;
   type?: 'expense' | 'income';
   by?: string;
+  byId?: string;
 }
 
 export interface Message {

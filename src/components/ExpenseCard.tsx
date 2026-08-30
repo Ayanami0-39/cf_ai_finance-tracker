@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { Expense } from "@/types";
+import type { FamilyMember } from "@/lib/family";
 import {
   ShoppingBag,
   Coffee,
@@ -20,6 +21,7 @@ import {
 
 interface ExpenseCardProps {
   expense: Expense;
+  members?: FamilyMember[];
   onDelete?: (id: string) => void;
 }
 
@@ -49,21 +51,35 @@ function resolveIcon(category: string): React.ReactNode {
   );
 }
 
-export function ExpenseCard({ expense, onDelete }: ExpenseCardProps) {
+export function ExpenseCard({ expense, members, onDelete }: ExpenseCardProps) {
   const [confirming, setConfirming] = useState(false);
   const isIncome = expense.type === "income";
   const icon = resolveIcon(expense.category);
+  const byMember =
+    (expense.byId && members?.find((m) => m.id === expense.byId)) ||
+    (expense.by && members?.find((m) => m.name === expense.by)) ||
+    undefined;
 
   return (
     <div className="flex items-center gap-3 py-3 px-4 border-b last:border-b-0 hover:bg-muted/40 transition-colors">
-      <div
-        className={`w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 ${
-          isIncome
-            ? "bg-income/10 text-income"
-            : "bg-secondary text-primary"
-        }`}
-      >
-        {icon}
+      <div className="relative flex-shrink-0">
+        <div
+          className={`w-9 h-9 rounded-lg flex items-center justify-center ${
+            isIncome
+              ? "bg-income/10 text-income"
+              : "bg-secondary text-primary"
+          }`}
+        >
+          {icon}
+        </div>
+        {byMember && (
+          <span
+            className="absolute -top-1.5 -right-1.5 w-4.5 h-4.5 w-[18px] h-[18px] rounded-full bg-card border flex items-center justify-center text-[9px] leading-none"
+            title={`由 ${byMember.name} 记录`}
+          >
+            {byMember.emoji}
+          </span>
+        )}
       </div>
 
       <div className="flex-1 min-w-0">
@@ -71,12 +87,12 @@ export function ExpenseCard({ expense, onDelete }: ExpenseCardProps) {
           {expense.merchant || expense.description}
         </p>
         <p className="text-xs text-muted-foreground">
+          {byMember ? `${byMember.name} • ` : ""}
           {expense.category} •{" "}
           {new Date(expense.date).toLocaleDateString("zh-CN", {
             month: "numeric",
             day: "numeric",
           })}
-          {expense.by ? ` • ${expense.by}` : ""}
         </p>
       </div>
 

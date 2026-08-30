@@ -32,13 +32,20 @@ export function FamilySettings({ onScopeChange }: FamilySettingsProps) {
       const res = await api.getFamilyMembers(scopeId);
       if (res.success) {
         setRemoteMembers(res.members as FamilyMember[]);
-        // 服务端注册表合并回本地成员列表
+        // 服务端注册表合并回本地成员列表，标记为家庭成员
         const local = getMembers();
         const merged = [...local];
         for (const rm of res.members) {
-          if (!merged.some((m) => m.id === rm.id)) merged.push(rm);
+          const idx = merged.findIndex((m) => m.id === rm.id);
+          if (idx >= 0) {
+            merged[idx] = { ...merged[idx], origin: "family" };
+          } else {
+            merged.push({ ...rm, origin: "family" as const });
+          }
         }
-        if (merged.length > local.length) saveMembers(merged);
+        if (JSON.stringify(merged) !== JSON.stringify(local)) {
+          saveMembers(merged);
+        }
       }
     } catch {
       // 静默失败
@@ -241,6 +248,9 @@ export function FamilySettings({ onScopeChange }: FamilySettingsProps) {
                     {m.id === active?.id && (
                       <span className="text-muted-foreground">（我）</span>
                     )}
+                  </span>
+                  <span className="text-[9px] px-1.5 py-0.5 rounded-full flex-shrink-0 bg-muted text-muted-foreground">
+                    {m.id === active?.id ? "本人" : "家庭"}
                   </span>
                 </div>
               ))}

@@ -48,8 +48,14 @@ export function useVoiceConversation(
     try {
       const scopeId = getScopeId();
       const members = getMembers();
-      const memberName = members.find((m) => m.id === getActiveMemberId(members))?.name;
-      const result = await api.sendVoiceCommand(scopeId, message, memberName);
+      const activeId = getActiveMemberId(members);
+      const memberName = members.find((m) => m.id === activeId)?.name;
+      const result = await api.sendVoiceCommand({
+        userId: scopeId,
+        input: message,
+        memberName,
+        memberId: activeId,
+      });
 
       if (!result.success) {
         throw new Error(result.message || 'Server request failed');

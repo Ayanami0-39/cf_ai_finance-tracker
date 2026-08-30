@@ -5,6 +5,7 @@ export interface ProcessedExpense {
   merchant: string;
   category: ExpenseCategory | 'Income';
   type: 'expense' | 'income';
+  date?: string;
   message: string;
   success: boolean;
   error?: string;
@@ -17,7 +18,9 @@ export async function processExpenseInput(
 ): Promise<ProcessedExpense> {
 
   try {
-    const userPrompt = getExpenseEntryPrompt(input, memberName);
+    // 注入当前日期，供 AI 推算「昨天/8月31日」等
+    const today = new Date().toISOString().split('T')[0];
+    const userPrompt = getExpenseEntryPrompt(input, memberName, today);
 
     const response = await AI.run(
       AI_CONFIG.model,
@@ -65,11 +68,18 @@ export async function processExpenseInput(
 
     const type: 'expense' | 'income' = parsed.type === 'income' ? 'income' : 'expense';
 
+    // 日期校验：仅接受 YYYY-MM-DD
+    const date =
+      typeof parsed.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(parsed.date)
+        ? parsed.date
+        : undefined;
+
     return {
       amount: Number(parsed.amount),
       merchant: parsed.merchant || 'Unknown',
       category: parsed.category,
       type,
+      date,
       message: parsed.message,
       success: true
     };
@@ -223,6 +233,7 @@ function fallbackParsing(input: string): ProcessedExpense {
     merchant,
     category,
     type: isIncome ? 'income' : 'expense',
+    date: extractDate(input),
     message: amount > 0
       ? (isIncome
         ? `记录收入 ${amountText}（${merchant}）。`
@@ -230,4 +241,61 @@ function fallbackParsing(input: string): ProcessedExpense {
       : '请告诉我具体金额。',
     success: amount > 0
   };
+}
+
+// Date extraction: absolute dates (8月31日/8-31/2026-08-31) + relative dates (今天/昨天/前天)
+export function extractDate(input: string): string | undefined {
+  const today = new Date();
+
+  // Relative dates
+  if (/今天|today/i.test(input)) return toLocalDateStr(today);
+  if (/昨天|yesterday/i.test(input)) {
+    today.setDate(today.getDate() - 1);
+    return toLocalDateStr(today);
+  }
+  if (/前天/i.test(input)) {
+    today.setDate(today.getDate() - 2);
+    return toLocalDateStr(today);
+  }
+
+  // 2026-08-31 / 2026/8/31
+  const fullMatch = input.match(/(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})/);
+  if (fullMatch) {
+    return buildDateStr(Number(fullMatch[1]), Number(fullMatch[2]), Number(fullMatch[3]));
+  }
+
+  // 8月31日 / 8月31号 / 8-31 / 8/31（年份取当前或 12 月时回退一年）
+  const monthDay = input.match(/(?:(\d{4})\s*年\s*)?(\d{1,2})\s*月\s*(\d{1,2})\s*[日号]/)
+    || input.match(/(?:(\d{4})[-/.])?(\d{1,2})[-/.](\d{1,2})(?!\d)/);
+  if (monthDay) {
+    const year = monthDay[1] ? Number(monthDay[1]) : undefined;
+    return buildDateStr(year, Number(monthDay[2]), Number(monthDay[3]));
+  }
+
+  // X 天前
+  const daysAgo = input.match(/(\d+)\s*天前/);
+  if (daysAgo) {
+    today.setDate(today.getDate() - Number(daysAgo[1]));
+    return toLocalDateStr(today);
+  }
+
+  return undefined;
+}
+
+function toLocalDateStr(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function buildDateStr(y: number | undefined, m: number, d: number): string | undefined {
+  if (m < 1 || m > 12 || d < 1 || d > 31) return undefined;
+  let year = y ?? new Date().getFullYear();
+  const dt = new Date(year, m - 1, d);
+  if (dt.getFullYear() !== year || dt.getMonth() !== m - 1 || dt.getDate() !== d) {
+    return undefined; // 无效日期（如 2月30日）
+  }
+  // 未指定年份且日期在今天之后 → 视为去年（如 1 月说「12月31日」）
+  if (!y && dt.getTime() > Date.now()) {
+    year -= 1;
+  }
+  return `${year}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
 }

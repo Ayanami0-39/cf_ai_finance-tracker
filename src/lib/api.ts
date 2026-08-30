@@ -14,14 +14,17 @@ function authHeaders(): Record<string, string> {
 
 export const api = {
   async sendVoiceCommand(
-    userId: string,
-    input: string,
-    memberName?: string
+    payload: {
+      userId: string;
+      input: string;
+      memberName?: string;
+      memberId?: string;
+    }
   ): Promise<VoiceCommandResponse> {
     const response = await fetch(`${API_BASE}/voice-command`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...authHeaders() },
-      body: JSON.stringify({ userId, input, memberName }),
+      body: JSON.stringify(payload),
     });
 
     if (!response.ok) {
@@ -43,11 +46,18 @@ export const api = {
     return response.json();
   },
 
-  async addExpense(userId: string, input: string): Promise<VoiceCommandResponse> {
+  async addExpense(
+    payload: {
+      userId: string;
+      input: string;
+      memberName?: string;
+      memberId?: string;
+    }
+  ): Promise<VoiceCommandResponse> {
     const response = await fetch(`${API_BASE}/expense-natural`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...authHeaders() },
-      body: JSON.stringify({ userId, input }),
+      body: JSON.stringify(payload),
     });
 
     if (!response.ok) {
@@ -168,6 +178,21 @@ export const api = {
     if (!response.ok) {
       throw new Error('Failed to fetch family members');
     }
+    return response.json();
+  },
+
+  async syncMemberProfile(
+    scopeId: string,
+    member: { id: string; name: string; emoji: string }
+  ): Promise<{
+    success: boolean;
+    members?: Array<{ id: string; name: string; emoji: string }>;
+  }> {
+    const response = await fetch(`${API_BASE}/family/${scopeId}/members`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify(member),
+    });
     return response.json();
   },
 };

@@ -110,11 +110,12 @@ function App() {
     try {
       const members = getMembers();
       const memberName = members.find((m) => m.id === userId)?.name;
-      const response = await api.sendVoiceCommand(
-        getScopeId(),
+      const response = await api.sendVoiceCommand({
+        userId: getScopeId(),
         input,
-        memberName
-      );
+        memberName,
+        memberId: userId,
+      });
 
       const aiMessage: Message = {
         id: crypto.randomUUID(),
@@ -159,6 +160,7 @@ function App() {
       role: "user",
       content: message,
       timestamp: Date.now(),
+      by: getMembers().find((m) => m.id === userId)?.name,
     };
     setMessages((prev) => [...prev, userMessage]);
 

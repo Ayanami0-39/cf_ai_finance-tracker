@@ -73,7 +73,7 @@ app.get('/', (c) => {
 app.post('/api/expense-natural', async (c) => {
   try {
   const body = await c.req.json();
-  const { userId, input, memberName } = body;
+  const { userId, input, memberName, memberId } = body;
 
   if (!userId) {
     return c.json({ success: false, error: 'userId required' }, 400);
@@ -98,10 +98,11 @@ app.post('/api/expense-natural', async (c) => {
       category: aiResult.category,
       merchant: aiResult.merchant,
       description: input,
-      date: new Date().toISOString().split('T')[0],
+      date: aiResult.date || new Date().toISOString().split('T')[0],
       createdAt: Date.now(),
       type: aiResult.type,
-      by: memberName
+      by: memberName,
+      byId: memberId
     };
 
     try {
@@ -172,7 +173,8 @@ app.post('/api/expenses', async (c) => {
       merchant: body.merchant,
       date: new Date().toISOString().split('T')[0],
       createdAt: Date.now(),
-      by: body.memberName || undefined
+      by: body.memberName || undefined,
+      byId: body.memberId || undefined
     };
 
     const id = c.env.FINANCE_MEMORY.idFromName(body.userId);
@@ -270,6 +272,7 @@ app.post('/api/chat/:userId', async (c) => {
       role: body.role,
       content: body.content,
       timestamp: body.timestamp || Date.now(),
+      by: body.by || undefined,
       expense: body.expense
     };
 
@@ -311,7 +314,7 @@ app.delete('/api/chat/:userId', async (c) => {
 
 app.post('/api/voice-command', async (c) => {
   try {
-    const { userId, input, memberName } = await c.req.json();
+    const { userId, input, memberName, memberId } = await c.req.json();
 
     if (!userId || !input) {
       return c.json({ success: false, error: 'Missing userId or input' }, 400);
@@ -338,10 +341,11 @@ app.post('/api/voice-command', async (c) => {
         category: aiResult.category,
         merchant: aiResult.merchant,
         description: input,
-        date: new Date().toISOString().split('T')[0],
+        date: aiResult.date || new Date().toISOString().split('T')[0],
         createdAt: Date.now(),
         type: aiResult.type,
-        by: memberName
+        by: memberName,
+        byId: memberId
       };
 
       try {
@@ -363,11 +367,17 @@ app.post('/api/voice-command', async (c) => {
           }
         }
 
-        return c.json({
-          success: true,
-          message: aiResult.message,
-          data: { expense }
-        });
+      // 指定日期记账时在确认语中明示，避免用户误以为记到今天
+      const datedMsg =
+        aiResult.date && aiResult.date !== new Date().toISOString().split('T')[0]
+          ? `${aiResult.message}（记在 ${aiResult.date}）`
+          : aiResult.message;
+
+      return c.json({
+        success: true,
+        message: datedMsg,
+        data: { expense }
+      });
 
       } catch (dbError) {
         return c.json({
@@ -574,6 +584,36 @@ app.get('/api/family/:scopeId/members', async (c) => {
     const stub = c.env.FINANCE_MEMORY.get(id);
     const members = await stub.getFamilyMembers();
     return c.json({ success: true, members });
+  } catch (err) {
+    return c.json({ success: false, error: String(err) }, 500);
+  }
+});
+
+// Upsert member profile into family registry（改名/换头像后同步到家庭）
+app.post('/api/family/:scopeId/members', async (c) => {
+  try {
+    const param: { scopeId: string } = c.req.param();
+    const body = await c.req.json();
+    if (!body.id || !body.name) {
+      return c.json({ success: false, error: 'id and name required' }, 400);
+    }
+
+    const id = c.env.FINANCE_MEMORY.idFromName(param.scopeId);
+    const stub = c.env.FINANCE_MEMORY.get(id);
+    const existing = await stub.getFamilyMembers();
+
+    let updated = false;
+    const merged = existing.map((m) => {
+      if (m.id === body.id) {
+        updated = true;
+        return { id: m.id, name: body.name, emoji: body.emoji || m.emoji };
+      }
+      return m;
+    });
+    if (!updated) merged.push({ id: body.id, name: body.name, emoji: body.emoji || '🙂' });
+    await stub.setFamilyMembers(merged);
+
+    return c.json({ success: true, members: merged });
   } catch (err) {
     return c.json({ success: false, error: String(err) }, 500);
   }
