@@ -16,7 +16,8 @@ export function MessageBubble({ message }: MessageBubbleProps) {
 
   useEffect(() => {
     if (!isUser) return;
-    const key = message.byId || message.by;
+    // 只按 byId（账号名）查服务端资料；旧本地消息仅有 by 显示名（如「coco 爸」，非账号）→ 不请求，直接展示原文
+    const key = message.byId;
     if (!key) return;
     let cancelled = false;
     accountApi.getProfiles([key]).then((map) => {

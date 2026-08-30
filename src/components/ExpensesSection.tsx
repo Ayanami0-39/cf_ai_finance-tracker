@@ -23,10 +23,10 @@ export function ExpensesSection({
   const me: AccountInfo | null = getAccount();
 
   useEffect(() => {
+    // 只拉取 byId（账号名）的资料；旧记录仅有 by 显示名（如「coco 爸」，非账号）→ 不请求，直接展示原文
     const keys = new Set<string>();
     for (const e of sorted) {
       if (e.byId) keys.add(e.byId);
-      else if (e.by) keys.add(e.by);
     }
     const missing = [...keys].filter((k) => !(k in profiles));
     if (missing.length === 0) return;

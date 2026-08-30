@@ -33,16 +33,22 @@ export function StatsSection({ expenses }: StatsSectionProps) {
   // 成员筛选来源：账单中出现过的记录者（byId 优先，旧数据回退 by 名字）
   const [profiles, setProfiles] = useState<Record<string, { displayName: string; emoji: string }>>({});
   const memberKeys = useMemo(() => {
-    const set = new Map<string, string>(); // key -> 展示名兜底
+    const set = new Map<string, { fallback: string; isAccount: boolean }>();
     for (const e of expenses) {
       const key = e.byId || e.by;
-      if (key && !set.has(key)) set.set(key, e.by || key);
+      if (!key) continue;
+      const prev = set.get(key);
+      // isAccount：该 key 是否为账号名（byId）。仅 by 显示名（旧本地成员，如「coco 爸」）不是账号，不查资料
+      set.set(key, { fallback: e.by || key, isAccount: prev?.isAccount || Boolean(e.byId) });
     }
     return [...set.entries()];
   }, [expenses]);
 
   useEffect(() => {
-    const missing = memberKeys.map(([k]) => k).filter((k) => !(k in profiles));
+    // 只拉取账号名（byId）的资料；旧本地显示名不请求（避免必然 404），筛选项直接展示原文
+    const missing = memberKeys
+      .filter(([k, v]) => v.isAccount && !(k in profiles))
+      .map(([k]) => k);
     if (missing.length === 0) return;
     let cancelled = false;
     accountApi.getProfiles(missing).then((map) => {
@@ -54,7 +60,7 @@ export function StatsSection({ expenses }: StatsSectionProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [memberKeys]);
 
-  const memberNameOf = (key: string) => profiles[key]?.displayName || memberKeys.find(([k]) => k === key)?.[1] || key;
+  const memberNameOf = (key: string) => profiles[key]?.displayName || memberKeys.find(([k]) => k === key)?.[1].fallback || key;
   const memberEmojiOf = (key: string) => profiles[key]?.emoji || "🙂";
 
   // 按成员过滤（默认「全部成员」）：byId 精确匹配，by 名字兜底旧数据
@@ -124,9 +130,9 @@ export function StatsSection({ expenses }: StatsSectionProps) {
                 className="appearance-none h-8 pl-7 pr-7 text-xs rounded-lg border bg-card text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 cursor-pointer max-w-[130px]"
               >
                 <option value="all">全部成员</option>
-                {memberKeys.map(([key, fallback]) => (
+                {memberKeys.map(([key, meta]) => (
                   <option key={key} value={key}>
-                    {memberNameOf(key) === key && fallback ? fallback : memberNameOf(key)}
+                    {memberNameOf(key) === key && meta.fallback ? meta.fallback : memberNameOf(key)}
                   </option>
                 ))}
               </select>
