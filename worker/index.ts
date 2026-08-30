@@ -221,6 +221,24 @@ app.delete('/api/expenses/:userId', async (c) => {
   }
 });
 
+// Delete a single expense by id
+app.delete('/api/expenses/:userId/:expenseId', async (c) => {
+  try {
+    const userId = c.req.param('userId');
+    const expenseId = c.req.param('expenseId');
+    const id = c.env.FINANCE_MEMORY.idFromName(userId);
+    const stub = c.env.FINANCE_MEMORY.get(id);
+
+    const deleted = await stub.deleteExpense(expenseId);
+    if (!deleted) {
+      return c.json({ success: false, error: 'Expense not found' }, 404);
+    }
+    return c.json({ success: true });
+  } catch (err) {
+    return c.json({ error: String(err) }, 500);
+  }
+});
+
 // Chat history endpoints
 app.get('/api/chat/:userId', async (c) => {
   try {
@@ -290,7 +308,7 @@ app.delete('/api/chat/:userId', async (c) => {
 
 app.post('/api/voice-command', async (c) => {
   try {
-    const { userId, input } = await c.req.json();
+    const { userId, input, memberName } = await c.req.json();
 
     if (!userId || !input) {
       return c.json({ success: false, error: 'Missing userId or input' }, 400);
@@ -300,7 +318,7 @@ app.post('/api/voice-command', async (c) => {
 
 
     if (intent === INTENTS.ADD_EXPENSE) {
-      const aiResult = await processExpenseInput(c.env.AI, input);
+      const aiResult = await processExpenseInput(c.env.AI, input, memberName);
 
       if (!aiResult.success) {
         return c.json({

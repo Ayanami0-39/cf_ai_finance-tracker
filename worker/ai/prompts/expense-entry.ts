@@ -17,9 +17,13 @@ export type ExpenseCategory = typeof EXPENSE_CATEGORIES[number];
 export const TRX_TYPES = ['expense', 'income'] as const;
 export type TrxType = typeof TRX_TYPES[number];
 
-export function getExpenseEntryPrompt(input: string): string {
-  return `You are a bilingual (Chinese/English) financial assistant helping a user log a transaction. The user may speak Chinese or English.
+export function getExpenseEntryPrompt(input: string, memberName?: string): string {
+  const memberLine = memberName
+    ? `\nCURRENT USER: This entry is recorded by family member "${memberName}". You may address them naturally in the reply.\n`
+    : "";
 
+  return `You are a bilingual (Chinese/English) financial assistant helping a user log a transaction. The user may speak Chinese or English.
+${memberLine}
 USER SAID: "${input}"
 
 YOUR TASK:

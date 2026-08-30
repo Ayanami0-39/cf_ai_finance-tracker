@@ -12,11 +12,12 @@ export interface ProcessedExpense {
 
 export async function processExpenseInput(
   AI: Ai,
-  input: string
+  input: string,
+  memberName?: string
 ): Promise<ProcessedExpense> {
 
   try {
-    const userPrompt = getExpenseEntryPrompt(input);
+    const userPrompt = getExpenseEntryPrompt(input, memberName);
 
     const response = await AI.run(
       AI_CONFIG.model,
@@ -216,7 +217,7 @@ function fallbackParsing(input: string): ProcessedExpense {
     }
   }
 
-  const amountText = category === 'Income' ? `+${amount.toFixed(2)}` : `${amount.toFixed(2)}`;
+  const amountText = category === 'Income' ? `+¥${amount.toFixed(2)}` : `¥${amount.toFixed(2)}`;
   return {
     amount,
     merchant,

@@ -5,9 +5,13 @@ import type { Expense } from "@/types";
 interface ExpensesSectionProps {
   expenses: Expense[];
   onExpensesClick?: () => void;
+  onDeleteExpense?: (id: string) => void;
 }
 
-export function ExpensesSection({ expenses }: ExpensesSectionProps) {
+export function ExpensesSection({
+  expenses,
+  onDeleteExpense,
+}: ExpensesSectionProps) {
   const sorted = [...expenses].sort((a, b) => b.createdAt - a.createdAt);
 
   return (
@@ -38,7 +42,11 @@ export function ExpensesSection({ expenses }: ExpensesSectionProps) {
         ) : (
           <div className="bg-card rounded-xl border overflow-hidden">
             {sorted.map((expense) => (
-              <ExpenseCard key={expense.id} expense={expense} />
+              <ExpenseCard
+                key={expense.id}
+                expense={expense}
+                onDelete={onDeleteExpense}
+              />
             ))}
           </div>
         )}

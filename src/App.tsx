@@ -2,11 +2,13 @@ import { useState, useEffect } from "react";
 import { TopBar } from "./components/TopBar";
 import { ChatSection } from "./components/ChatSection";
 import { ExpensesSection } from "./components/ExpensesSection";
+import { StatsSection } from "./components/StatsSection";
 import { VoiceMode } from "./components/VoiceMode";
 import { AuthGate } from "./components/AuthGate";
-import { Tabs, TabsContent } from "@/components/ui/tabs";
-import { MessageCircle, ReceiptText } from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { MessageCircle, ReceiptText, BarChart3 } from "lucide-react";
 import { api } from "./lib/api";
+import { getMembers, getActiveMemberId, setActiveMemberId } from "./lib/family";
 import { getUserId } from "./lib/user";
 import type { Message, Expense } from "./types";
 import "./App.css";
@@ -17,15 +19,25 @@ function App() {
   const [isLoading, setIsLoading] = useState(false);
   const [isVoiceMode, setIsVoiceMode] = useState(false);
   const [userId, setUserId] = useState<string>("");
-  const [mobileTab, setMobileTab] = useState<"chat" | "expenses">("chat");
+  const [mobileTab, setMobileTab] = useState<"chat" | "expenses" | "stats">("chat");
 
   // Initialize userId and load data
   useEffect(() => {
-    const id = getUserId();
+    const members = getMembers();
+    const id = members.length > 0 ? getActiveMemberId(members) : getUserId();
     setUserId(id);
     loadExpenses(id);
     loadChatHistory(id);
   }, []);
+
+  const handleMemberChange = (id: string) => {
+    setActiveMemberId(id);
+    setUserId(id);
+    setExpenses([]);
+    setMessages([]);
+    loadExpenses(id);
+    loadChatHistory(id);
+  };
 
   const loadExpenses = async (uid: string) => {
     try {
@@ -35,6 +47,17 @@ function App() {
       }
     } catch (error) {
       // Error loading expenses
+    }
+  };
+
+  const handleDeleteExpense = async (expenseId: string) => {
+    // 乐观更新：先移除本地，再请求后端
+    setExpenses((prev) => prev.filter((e) => e.id !== expenseId));
+    try {
+      await api.deleteExpense(userId, expenseId);
+    } catch {
+      // 失败时回滚重新拉取
+      loadExpenses(userId);
     }
   };
 
@@ -72,7 +95,9 @@ function App() {
     setIsLoading(true);
 
     try {
-      const response = await api.sendVoiceCommand(userId, input);
+      const members = getMembers();
+      const memberName = members.find((m) => m.id === userId)?.name;
+      const response = await api.sendVoiceCommand(userId, input, memberName);
 
       const aiMessage: Message = {
         id: crypto.randomUUID(),
@@ -144,7 +169,7 @@ function App() {
   return (
     <AuthGate>
       <div className="h-screen flex flex-col bg-background">
-        <TopBar />
+        <TopBar onMemberChange={handleMemberChange} />
 
       <div className="hidden md:flex flex-1 overflow-hidden">
         <div className="w-[50%] h-full ml-[8%]">
@@ -155,15 +180,35 @@ function App() {
             onVoiceClick={() => setIsVoiceMode(true)}
           />
         </div>
-        <div className="w-[38%] h-full px-4 py-2 overflow-y-auto">
-          <ExpensesSection expenses={expenses} />
+        <div className="w-[38%] h-full px-4 py-2 overflow-hidden">
+          <Tabs defaultValue="expenses" className="h-full flex flex-col">
+            <div className="flex justify-end pb-2 flex-shrink-0">
+              <TabsList className="h-8">
+                <TabsTrigger value="expenses" className="text-xs px-3 h-7">
+                  记录
+                </TabsTrigger>
+                <TabsTrigger value="stats" className="text-xs px-3 h-7">
+                  统计
+                </TabsTrigger>
+              </TabsList>
+            </div>
+            <TabsContent value="expenses" className="flex-1 mt-0 overflow-hidden">
+              <ExpensesSection
+                expenses={expenses}
+                onDeleteExpense={handleDeleteExpense}
+              />
+            </TabsContent>
+            <TabsContent value="stats" className="flex-1 mt-0 overflow-hidden">
+              <StatsSection expenses={expenses} />
+            </TabsContent>
+          </Tabs>
         </div>
       </div>
 
       <div className="md:hidden flex-1 overflow-hidden flex flex-col">
         <Tabs
           value={mobileTab}
-          onValueChange={(v) => setMobileTab(v as "chat" | "expenses")}
+          onValueChange={(v) => setMobileTab(v as "chat" | "expenses" | "stats")}
           className="h-full flex flex-col flex-1"
         >
           <TabsContent value="chat" className="flex-1 mt-0 overflow-hidden">
@@ -176,7 +221,11 @@ function App() {
           </TabsContent>
 
           <TabsContent value="expenses" className="flex-1 mt-0 overflow-hidden">
-            <ExpensesSection expenses={expenses} />
+            <ExpensesSection expenses={expenses} onDeleteExpense={handleDeleteExpense} />
+          </TabsContent>
+
+          <TabsContent value="stats" className="flex-1 mt-0 overflow-hidden">
+            <StatsSection expenses={expenses} />
           </TabsContent>
         </Tabs>
 
@@ -199,12 +248,12 @@ function MobileTabBar({
   tab,
   onChange,
 }: {
-  tab: "chat" | "expenses";
-  onChange: (t: "chat" | "expenses") => void;
+  tab: "chat" | "expenses" | "stats";
+  onChange: (t: "chat" | "expenses" | "stats") => void;
 }) {
   return (
     <nav
-      className="md:hidden bg-card border-t grid grid-cols-2"
+      className="md:hidden bg-card border-t grid grid-cols-3"
       style={{
         paddingBottom: "max(env(safe-area-inset-bottom), 6px)",
         paddingTop: "6px",
@@ -221,6 +270,12 @@ function MobileTabBar({
         onClick={() => onChange("expenses")}
         icon={<ReceiptText className="w-5 h-5" />}
         label="记录"
+      />
+      <MobileTabButton
+        active={tab === "stats"}
+        onClick={() => onChange("stats")}
+        icon={<BarChart3 className="w-5 h-5" />}
+        label="统计"
       />
     </nav>
   );

@@ -6,7 +6,7 @@ export function getDeletePrompt(
 ): string {
 
   const recentExpenses = expenses.slice(-10).map((e, idx) =>
-    `${idx + 1}. $${e.amount} - ${e.merchant} (${e.category}) on ${e.date}`
+    `${idx + 1}. ¥${e.amount} - ${e.merchant} (${e.category}) on ${e.date}`
   ).join('\n');
 
   return `User wants to delete an expense. Identify which one.
@@ -18,7 +18,7 @@ ${recentExpenses}
 
 RULES:
 - Match by merchant name (e.g., "pizza" → expense with merchant "Pizza")
-- Match by amount (e.g., "$50" → expense with amount 50)
+- Match by amount (e.g., "¥50" → expense with amount 50)
 - Match by category (e.g., "food expense" → Food & Dining category)
 - If says "last" or "recent" or 上一笔/最近一笔 → pick most recent (highest index)
 - Chinese input: 刚才那笔/那笔XX/45块的那笔 → match by merchant, amount or recency
@@ -28,7 +28,7 @@ OUTPUT (JSON only):
 {
   "expenseIndex": 5,
   "confidence": 0.9,
-  "message": "Deleted $12 Pizza Hut expense."
+  "message": "Deleted ¥12 Pizza Hut expense."
 }
 
 If can't determine which expense:

@@ -18,7 +18,7 @@ USER QUESTION: "${userQuestion}"
 
 EXPENSES DATA:
 - Total expenses: ${expenses.length}
-- Total amount: $${total.toFixed(2)}
+- Total amount: ¥${total.toFixed(2)}
 - By category: ${JSON.stringify(byCategory)}
 - Recent expenses: ${JSON.stringify(expenses.slice(-5))}
 
@@ -32,13 +32,13 @@ ANSWER NATURALLY:
 EXAMPLES:
 
 Q: "How much on food?"
-A: "You've spent $287 on Food & Dining so far. That's across 12 transactions."
+A: "You've spent ¥287 on Food & Dining so far. That's across 12 transactions."
 
 Q: "What's my total?"
-A: "Your total spending is $1,245 this month."
+A: "Your total spending is ¥1,245 this month."
 
 Q: "Show me coffee expenses"
-A: "You've spent $65 on coffee across 8 visits. Average is about $8 per trip."
+A: "You've spent ¥65 on coffee across 8 visits. Average is about ¥8 per trip."
 
 Q: "我这个月花了多少钱"
 A: "这个月你总共花了 1,245 元，其中餐饮类最多。"

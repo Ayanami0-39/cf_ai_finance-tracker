@@ -24,7 +24,7 @@ export function SummaryCards({ expenses }: SummaryCardsProps) {
           <p className="text-xs opacity-80">结余 / Balance</p>
         </div>
         <p className="text-xl md:text-3xl font-bold tabular-nums tracking-tight">
-          {balance < 0 ? "-" : ""}${Math.abs(balance).toFixed(2)}
+          {balance < 0 ? "-" : ""}¥{Math.abs(balance).toFixed(2)}
         </p>
       </Card>
 
@@ -35,7 +35,7 @@ export function SummaryCards({ expenses }: SummaryCardsProps) {
           <p className="text-xs text-muted-foreground">收入 / Income</p>
         </div>
         <p className="text-lg md:text-2xl font-semibold tabular-nums text-income">
-          +${totalIncome.toFixed(2)}
+          +¥{totalIncome.toFixed(2)}
         </p>
       </Card>
 
@@ -46,7 +46,7 @@ export function SummaryCards({ expenses }: SummaryCardsProps) {
           <p className="text-xs text-muted-foreground">支出 / Expense</p>
         </div>
         <p className="text-lg md:text-2xl font-semibold tabular-nums text-destructive">
-          -${totalExpense.toFixed(2)}
+          -¥{totalExpense.toFixed(2)}
         </p>
       </Card>
     </div>

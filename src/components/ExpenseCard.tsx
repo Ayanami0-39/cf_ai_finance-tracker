@@ -1,3 +1,4 @@
+import { useState } from "react";
 import type { Expense } from "@/types";
 import {
   ShoppingBag,
@@ -12,10 +13,14 @@ import {
   Scissors,
   Plane,
   ArrowUpRight,
+  Trash2,
+  X,
+  Check,
 } from "lucide-react";
 
 interface ExpenseCardProps {
   expense: Expense;
+  onDelete?: (id: string) => void;
 }
 
 const categoryIcons: Record<string, React.ReactNode> = {
@@ -44,7 +49,8 @@ function resolveIcon(category: string): React.ReactNode {
   );
 }
 
-export function ExpenseCard({ expense }: ExpenseCardProps) {
+export function ExpenseCard({ expense, onDelete }: ExpenseCardProps) {
+  const [confirming, setConfirming] = useState(false);
   const isIncome = expense.type === "income";
   const icon = resolveIcon(expense.category);
 
@@ -79,9 +85,46 @@ export function ExpenseCard({ expense }: ExpenseCardProps) {
             isIncome ? "text-income" : "text-foreground"
           }`}
         >
-          {isIncome ? "+" : "-"}${expense.amount.toFixed(2)}
+          {isIncome ? "+" : "-"}¥{expense.amount.toFixed(2)}
         </p>
       </div>
+
+      {onDelete && (
+        <div className="flex-shrink-0 -mr-1">
+          {confirming ? (
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                aria-label="确认删除"
+                onClick={() => onDelete(expense.id)}
+                className="w-7 h-7 rounded-md bg-destructive text-white flex items-center justify-center hover:bg-destructive/90 active:scale-95 transition-all"
+              >
+                <Check className="w-3.5 h-3.5" />
+              </button>
+              <button
+                type="button"
+                aria-label="取消删除"
+                onClick={() => setConfirming(false)}
+                className="w-7 h-7 rounded-md bg-muted text-muted-foreground flex items-center justify-center hover:bg-muted/80 active:scale-95 transition-all"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+              <span className="text-[11px] text-muted-foreground mr-1">
+                确认删除？
+              </span>
+            </div>
+          ) : (
+            <button
+              type="button"
+              aria-label="删除该记录"
+              onClick={() => setConfirming(true)}
+              className="w-7 h-7 rounded-md text-muted-foreground/60 hover:text-destructive hover:bg-destructive/10 flex items-center justify-center transition-colors"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 }

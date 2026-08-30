@@ -61,7 +61,7 @@ export async function identifyExpenseToDelete(
           const expense = recentExpenses[expenseIdx];
           return {
             expenseId: expense.id,
-            message: parsed.message || `Deleted $${expense.amount} ${expense.merchant} expense.`,
+            message: parsed.message || `Deleted ¥${expense.amount} ${expense.merchant} expense.`,
             success: true
           };
         }
@@ -92,7 +92,7 @@ function fallbackDeleteIdentification(userInput: string, expenses: Expense[]): D
     const lastExpense = expenses[expenses.length - 1];
     return {
       expenseId: lastExpense.id,
-      message: `Deleted your last expense: $${lastExpense.amount} for ${lastExpense.merchant}.`,
+      message: `Deleted your last expense: ¥${lastExpense.amount} for ${lastExpense.merchant}.`,
       success: true
     };
     }
@@ -103,7 +103,7 @@ function fallbackDeleteIdentification(userInput: string, expenses: Expense[]): D
     if (merchantLower && lower.includes(merchantLower)) {
       return {
         expenseId: expense.id,
-        message: `Deleted $${expense.amount} ${expense.merchant} expense.`,
+        message: `Deleted ¥${expense.amount} ${expense.merchant} expense.`,
         success: true
       };
     }
@@ -120,7 +120,7 @@ function fallbackDeleteIdentification(userInput: string, expenses: Expense[]): D
         return {
           expenseId: null,
           expenseIds: matchingExpenses.map(e => e.id),
-          message: `Deleted all ${matchingExpenses.length} expense(s) of $${amount.toFixed(2)}.`,
+          message: `Deleted all ${matchingExpenses.length} expense(s) of ¥${amount.toFixed(2)}.`,
           success: true,
           isBulkDelete: true
         };
@@ -131,7 +131,7 @@ function fallbackDeleteIdentification(userInput: string, expenses: Expense[]): D
       if (matchingExpense) {
         return {
           expenseId: matchingExpense.id,
-          message: `Deleted $${amount} expense.`,
+          message: `Deleted ¥${amount} expense.`,
           success: true
         };
       }

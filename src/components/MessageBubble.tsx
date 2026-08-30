@@ -26,7 +26,7 @@ export function MessageBubble({ message }: MessageBubbleProps) {
                 : "border-border text-muted-foreground"
             }`}
           >
-            {message.expense.merchant} • $
+            {message.expense.merchant} • ¥
             {message.expense.amount.toFixed(2)} • {message.expense.category}
           </div>
         )}

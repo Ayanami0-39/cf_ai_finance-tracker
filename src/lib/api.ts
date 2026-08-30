@@ -13,11 +13,15 @@ function authHeaders(): Record<string, string> {
 }
 
 export const api = {
-  async sendVoiceCommand(userId: string, input: string): Promise<VoiceCommandResponse> {
+  async sendVoiceCommand(
+    userId: string,
+    input: string,
+    memberName?: string
+  ): Promise<VoiceCommandResponse> {
     const response = await fetch(`${API_BASE}/voice-command`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...authHeaders() },
-      body: JSON.stringify({ userId, input }),
+      body: JSON.stringify({ userId, input, memberName }),
     });
 
     if (!response.ok) {
@@ -61,6 +65,17 @@ export const api = {
 
     if (!response.ok) {
       throw new Error('Failed to clear expenses');
+    }
+  },
+
+  async deleteExpense(userId: string, expenseId: string): Promise<void> {
+    const response = await fetch(
+      `${API_BASE}/expenses/${userId}/${expenseId}`,
+      { method: 'DELETE', headers: authHeaders() }
+    );
+
+    if (!response.ok) {
+      throw new Error('Failed to delete expense');
     }
   },
 
