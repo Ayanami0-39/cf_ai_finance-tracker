@@ -96,7 +96,7 @@ function App() {
       const errorMessage: Message = {
         id: crypto.randomUUID(),
         role: "ai",
-        content: "Sorry, I couldn't process that. Please try again.",
+        content: "抱歉，处理失败了，请重试。",
         timestamp: Date.now(),
       };
       setMessages((prev) => [...prev, errorMessage]);
@@ -139,11 +139,11 @@ function App() {
   };
 
   return (
-    <div className="h-screen flex flex-col bg-white">
+    <div className="h-screen flex flex-col bg-background">
       <TopBar />
 
       <div className="hidden md:flex flex-1 overflow-hidden">
-        <div className="w-[50%] h-full ml-[15%]">
+        <div className="w-[50%] h-full ml-[8%]">
           <ChatSection
             messages={messages}
             isLoading={isLoading}
@@ -151,25 +151,28 @@ function App() {
             onVoiceClick={() => setIsVoiceMode(true)}
           />
         </div>
-        <div className="w-[35%] h-full">
+        <div className="w-[38%] h-full px-4 py-2 overflow-y-auto">
           <ExpensesSection expenses={expenses} />
         </div>
       </div>
 
-      <div className="md:hidden flex-1 overflow-hidden">
-        <Tabs defaultValue="chat" className="h-full flex flex-col">
-          <TabsList className="w-full grid grid-cols-2 rounded-none h-12 bg-gray-50">
+      <div className="md:hidden flex-1 overflow-hidden flex flex-col">
+        <div className="px-3 pt-2">
+          <SummaryCardsInline expenses={expenses} />
+        </div>
+        <Tabs defaultValue="chat" className="h-full flex flex-col flex-1">
+          <TabsList className="w-full grid grid-cols-2 rounded-none h-11 bg-muted">
             <TabsTrigger
               value="chat"
-              className="rounded-full mx-2 data-[state=active]:bg-white"
+              className="rounded-lg mx-2 data-[state=active]:bg-card"
             >
-              Chat
+              对话
             </TabsTrigger>
             <TabsTrigger
               value="expenses"
-              className="rounded-full mx-2 data-[state=active]:bg-white"
+              className="rounded-lg mx-2 data-[state=active]:bg-card"
             >
-              Expenses
+              记录
             </TabsTrigger>
           </TabsList>
 
@@ -196,6 +199,12 @@ function App() {
       />
     </div>
   );
+}
+
+// Mobile: compact summary band above tabs
+import { SummaryCards } from "./components/SummaryCard";
+function SummaryCardsInline({ expenses }: { expenses: Expense[] }) {
+  return <SummaryCards expenses={expenses} />;
 }
 
 export default App;

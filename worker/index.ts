@@ -263,7 +263,9 @@ app.post('/api/voice-command', async (c) => {
       if (!aiResult.success) {
         return c.json({
           success: false,
-          message: "Sorry, I couldn't understand that expense. Try: 'I spent $50 on coffee'"
+          message: /(花了|买|付|记账|记录|块|元)/.test(input)
+            ? "没太听懂这笔记录，试试说「我花了 50 块买咖啡」"
+            : "Sorry, I couldn't understand that expense. Try: 'I spent $50 on coffee'"
         }, 400);
       }
 
@@ -274,7 +276,8 @@ app.post('/api/voice-command', async (c) => {
         merchant: aiResult.merchant,
         description: input,
         date: new Date().toISOString().split('T')[0],
-        createdAt: Date.now()
+        createdAt: Date.now(),
+        type: aiResult.type
       };
 
       try {
@@ -305,7 +308,9 @@ app.post('/api/voice-command', async (c) => {
       } catch (dbError) {
         return c.json({
           success: false,
-          message: "Sorry, couldn't save your expense."
+          message: /(花了|买|付|记账|记录)/.test(input)
+            ? "抱歉，保存这笔记录失败了。"
+            : "Sorry, couldn't save your expense."
         }, 500);
       }
     }
@@ -327,7 +332,7 @@ app.post('/api/voice-command', async (c) => {
     else if (intent === INTENTS.HELP) {
       return c.json({
         success: true,
-        message: "I can help you track expenses! Try saying 'I spent $50 on coffee' or 'How much did I spend on food?'"
+        message: "我可以帮你记账！试试说「我花了 50 块买咖啡」或「这个月花了多少钱」。I can also help in English: 'I spent $50 on coffee'."
       });
     }
 
@@ -380,7 +385,7 @@ app.post('/api/voice-command', async (c) => {
     else {
       return c.json({
         success: true,
-        message: "I'm not sure what you mean. Try: 'I spent $X on something' or 'How much did I spend?'"
+        message: "我没太理解你的意思。试试说「我花了 50 块买咖啡」或「这个月花了多少钱」。 Or try: 'I spent $X on something'."
       });
     }
 

@@ -20,7 +20,8 @@ RULES:
 - Match by merchant name (e.g., "pizza" → expense with merchant "Pizza")
 - Match by amount (e.g., "$50" → expense with amount 50)
 - Match by category (e.g., "food expense" → Food & Dining category)
-- If says "last" or "recent" → pick most recent (highest index)
+- If says "last" or "recent" or 上一笔/最近一笔 → pick most recent (highest index)
+- Chinese input: 刚才那笔/那笔XX/45块的那笔 → match by merchant, amount or recency
 - If unclear, return expenseIndex: null
 
 OUTPUT (JSON only):

@@ -27,6 +27,7 @@ ANSWER NATURALLY:
 - Give specific numbers
 - Keep answer brief (2-3 sentences max)
 - If asking about specific category, focus on that
+- Reply in the SAME language the user used (Chinese question → Chinese answer)
 
 EXAMPLES:
 
@@ -38,6 +39,12 @@ A: "Your total spending is $1,245 this month."
 
 Q: "Show me coffee expenses"
 A: "You've spent $65 on coffee across 8 visits. Average is about $8 per trip."
+
+Q: "我这个月花了多少钱"
+A: "这个月你总共花了 1,245 元，其中餐饮类最多。"
+
+Q: "吃饭花了多少"
+A: "餐饮方面到目前为止花了 287 元，共 12 笔。"
 
 Respond naturally in 1-2 sentences.`;
 }

@@ -4,26 +4,28 @@
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 240 10% 3.9%;
-    --card: 0 0% 100%;
-    --card-foreground: 240 10% 3.9%;
+    /* HushLedger-inspired palette */
+    --background: 96 20% 95%;        /* #f4f6f2 */
+    --foreground: 160 31% 14%;       /* #18312c */
+    --card: 0 0% 100%;               /* #ffffff */
+    --card-foreground: 160 31% 14%;
     --popover: 0 0% 100%;
-    --popover-foreground: 240 10% 3.9%;
-    --primary: 142.1 76.2% 36.3%;
-    --primary-foreground: 355.7 100% 97.3%;
-    --secondary: 240 4.8% 95.9%;
-    --secondary-foreground: 240 5.9% 10%;
-    --muted: 240 4.8% 95.9%;
-    --muted-foreground: 240 3.8% 46.1%;
-    --accent: 142 76% 90%;
-    --accent-foreground: 142.1 76.2% 36.3%;
-    --destructive: 0 84.2% 60.2%;
+    --popover-foreground: 160 31% 14%;
+    --primary: 160 52% 19%;          /* #17483c */
+    --primary-foreground: 0 0% 100%;
+    --secondary: 96 15% 91%;
+    --secondary-foreground: 160 31% 14%;
+    --muted: 96 12% 92%;
+    --muted-foreground: 152 9% 43%;  /* #64766f */
+    --accent: 160 52% 19%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 3 45% 49%;        /* #b14b46 */
     --destructive-foreground: 0 0% 98%;
-    --border: 240 5.9% 90%;
-    --input: 240 5.9% 90%;
-    --ring: 142.1 76.2% 36.3%;
-    --radius: 1rem;
+    --income: 160 73% 28%;           /* #147a5a */
+    --border: 152 16% 88%;           /* #dde5e0 */
+    --input: 152 16% 88%;
+    --ring: 172 42% 34%;             /* #2f7e70 */
+    --radius: 0.75rem;
   }
 }
 
@@ -33,10 +35,12 @@
   }
   body {
     @apply bg-background text-foreground;
-    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC',
+      'Hiragino Sans GB', 'Microsoft YaHei', 'Segoe UI', system-ui, sans-serif;
     margin: 0;
     padding: 0;
     height: 100vh;
+    font-variant-numeric: tabular-nums;
   }
 
   html {

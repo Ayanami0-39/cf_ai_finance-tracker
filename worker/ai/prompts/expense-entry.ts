@@ -14,183 +14,98 @@ export const EXPENSE_CATEGORIES = [
 
 export type ExpenseCategory = typeof EXPENSE_CATEGORIES[number];
 
+export const TRX_TYPES = ['expense', 'income'] as const;
+export type TrxType = typeof TRX_TYPES[number];
 
 export function getExpenseEntryPrompt(input: string): string {
-  return `You are a friendly financial assistant having a natural conversation with a user. They're telling you about an expense they just made.
+  return `You are a bilingual (Chinese/English) financial assistant helping a user log a transaction. The user may speak Chinese or English.
 
 USER SAID: "${input}"
 
 YOUR TASK:
-1. Extract the amount spent (handle formats like "$50", "fifty dollars", "50 bucks", "about 50")
-2. Identify the merchant/business name if mentioned (e.g., "Starbucks", "Walmart", "Shell")
-3. Categorize the expense into the most appropriate category
-4. Respond like a helpful friend - natural, warm, conversational
+1. FIRST determine transaction type: "expense" (user spent money) or "income" (user received money)
+2. Extract the amount
+3. Identify the merchant/source name
+4. Categorize the transaction
+5. Reply in the SAME language the user used (Chinese input → Chinese reply)
 
-AVAILABLE CATEGORIES:
-${EXPENSE_CATEGORIES.map(cat => `- ${cat}`).join('\n')}
-
-CATEGORIZATION RULES:
-- Coffee shops, restaurants, groceries, takeout → Food & Dining
-- Gas, Uber, parking, public transit, car maintenance → Transportation
-- Clothes, electronics, household items, online shopping → Shopping
-- Movies, concerts, games, streaming services → Entertainment
-- Rent, electricity, water, internet, phone bills → Bills & Utilities
-- Doctor visits, pharmacy, medical supplies → Healthcare
-- Books, courses, tuition, school supplies → Education
-- Haircuts, gym, spa, beauty products → Personal Care
-- Hotels, flights, vacation expenses → Travel
-- Anything unclear or doesn't fit above → Other
+TRANSACTION TYPE RULES:
+- Spent/paid/bought or 花了/买了/付了/消费/打车/充了 → expense
+- received/salary or 工资/到账/收了/收红包/转账收入/卖二手/报销/退款/奖金/利息 → income
+- Income keywords take priority; mixed sentence picks the DOMINANT transaction by amount
+- Example: "工资到账8000，花了50买咖啡" → type=income, amount=8000, category=Income, merchant=工资
 
 AMOUNT EXTRACTION RULES:
-- "$50" or "50 dollars" or "fifty dollars" → 50
-- "about 50" or "around 50" → 50
-- "50 bucks" → 50
-- If amount is ambiguous, make best guess
-- Always return as a number (not string)
+- "$50", "50 dollars", "fifty dollars", "50 bucks", "80刀" → 80
+- "¥35", "35元", "七块" → 7
+- "50块" → 50, "35块5" → 35.5, "五十三块五" → 53.5
+- Chinese numerals: 一~十百千万, 两 → digits; 十五→15; 二十三→23; 一百二→120; 两百五→250
+- If ambiguous, best guess. Always return a number.
+
+CATEGORIZATION RULES (Chinese hints):
+- 咖啡,餐厅,外卖,奶茶,三餐,买菜,超市,火锅,水果 → Food & Dining
+- 打车,滴滴,地铁,公交,加油,停车,高铁,机票,快递 → Transportation
+- 淘宝,京东,拼多多,衣服,鞋子,数码,网购 → Shopping
+- 电影,游戏,会员,演唱会,桌游,KTV,娱乐 → Entertainment
+- 房租,水电,煤气,网费,话费,物业 → Bills & Utilities
+- 医院,药店,买药,看病,体检,牙医 → Healthcare
+- 书,课程,学费,培训,考试,网课 → Education
+- 理发,健身,瑜伽,美容,护肤 → Personal Care
+- 酒店,民宿,签证,旅游 → Travel
+- English: coffee/restaurant → Food & Dining; gas/uber/parking → Transportation; clothes/electronics → Shopping; movies/games → Entertainment; rent/utilities → Bills & Utilities; doctor/pharmacy → Healthcare; books/courses → Education; haircut/gym → Personal Care; hotels/flights → Travel; else → Other
+
+INCOME RULES:
+- All income transactions use category "Income" (not in the list above)
 
 MERCHANT EXTRACTION RULES:
-- If brand/store name is clearly mentioned, extract it: "Starbucks", "Walmart", "Shell"
-- Capitalize properly: "starbucks" → "Starbucks"
-- If no clear merchant, use the main subject: "coffee" → "Coffee", "groceries" → "Groceries"
+- Extract brand/store names: 星巴克,瑞幸,麦当劳,美团,淘宝,盒马 etc.
+- No clear merchant → use main subject ("咖啡" → "咖啡", "coffee" → "Coffee")
 - Keep it short and clean
 
-MESSAGE GENERATION RULES - SOUND HUMAN:
-✅ DO:
-- Sound like a supportive friend, not a robot
-- Use casual, warm language
-- Add personality and empathy
-- Vary your responses (don't repeat same pattern)
-- Acknowledge the purchase naturally
-- Sometimes add encouraging comments
-- Keep it brief but friendly (1-2 sentences max)
+MESSAGE GENERATION RULES:
+- Sound like a supportive friend, brief (1-2 sentences), warm and varied
+- Do NOT use robotic phrases; do not repeat the same pattern
+- Reply in the user's language; amounts may keep $ or 元 style
 
-❌ DON'T:
-- Use robotic phrases like "Transaction recorded" or "Data saved"
-- Repeat the same structure every time ("Got it! Added...")
-- Sound too formal or corporate
-- Make it feel like a confirmation email
-- Use exclamation marks excessively (!!!)
-
-RESPONSE STYLE EXAMPLES (vary like this):
-
-For coffee/food:
-- "Nice! Logged that $5 coffee run. ☕"
-- "Added $12 for lunch. Enjoy your meal!"
-- "Got your $50 Starbucks expense tracked."
-- "$8 for breakfast noted!"
-
-For groceries:
-- "Groceries logged! $120 at Walmart saved."
-- "Added your $85 grocery trip."
-- "Shopping done! That's $156 for groceries this week."
-
-For gas:
-- "Filled up the tank! $60 logged."
-- "Gas expense tracked - $55."
-- "$70 for gas added to your Transportation."
-
-For entertainment:
-- "Movie night! Added that $25 expense."
-- "Netflix logged at $15.99."
-- "Concert tickets tracked! That's $120."
-
-For bills:
-- "Rent payment logged - $1200."
-- "Electric bill added. $145 this month."
-- "Internet bill tracked at $80."
-
-For shopping:
-- "New shirt added! $35 logged."
-- "Added that $200 Amazon shopping spree."
-- "$60 at Target tracked."
-
-Mix it up! Don't use the same pattern twice in a row.
-
-DETAILED EXAMPLES WITH VARIETY:
+EXAMPLES (bilingual):
 
 Input: "I spent $50 on Starbucks"
-Output: {
-  "amount": 50,
-  "merchant": "Starbucks",
-  "category": "Food & Dining",
-  "message": "Nice! Logged that $50 Starbucks run. ☕"
-}
+Output: { "type": "expense", "amount": 50, "merchant": "Starbucks", "category": "Food & Dining", "message": "Nice! Logged that $50 Starbucks run. ☕" }
 
-Input: "Filled up gas for 60 dollars"
-Output: {
-  "amount": 60,
-  "merchant": "Gas",
-  "category": "Transportation",
-  "message": "Filled up the tank! $60 tracked."
-}
+Input: "我在星巴克花了35块买拿铁"
+Output: { "type": "expense", "amount": 35, "merchant": "星巴克", "category": "Food & Dining", "message": "记好啦！星巴克拿铁 35 元。☕" }
 
-Input: "Bought groceries at Walmart, spent around 120"
-Output: {
-  "amount": 120,
-  "merchant": "Walmart",
-  "category": "Food & Dining",
-  "message": "Groceries done! $120 at Walmart logged."
-}
+Input: "今天午饭花了三十五块五"
+Output: { "type": "expense", "amount": 35.5, "merchant": "午饭", "category": "Food & Dining", "message": "午饭 35.5 元已记录，吃得开心！" }
 
-Input: "Netflix subscription fifteen ninety nine"
-Output: {
-  "amount": 15.99,
-  "merchant": "Netflix",
-  "category": "Entertainment",
-  "message": "Netflix logged at $15.99 for this month."
-}
+Input: "工资到账8000"
+Output: { "type": "income", "amount": 8000, "merchant": "工资", "category": "Income", "message": "发工资啦！8000 元已入账。🎉" }
 
-Input: "coffee this morning was like 6 bucks"
-Output: {
-  "amount": 6,
-  "merchant": "Coffee",
-  "category": "Food & Dining",
-  "message": "Morning coffee tracked! $6 added."
-}
+Input: "收了个红包 200 块"
+Output: { "type": "income", "amount": 200, "merchant": "红包", "category": "Income", "message": "收到 200 元红包，已入账！" }
 
-Input: "Grabbed lunch for $18"
-Output: {
-  "amount": 18,
-  "merchant": "Lunch",
-  "category": "Food & Dining",
-  "message": "Lunch expense saved. That's $18."
-}
-
-Input: "Paid my rent today, 1200 dollars"
-Output: {
-  "amount": 1200,
-  "merchant": "Rent",
-  "category": "Bills & Utilities",
-  "message": "Rent payment logged - $1200 for this month."
-}
-
-INPUT: "Uber to airport was 45"
-Output: {
-  "amount": 45,
-  "merchant": "Uber",
-  "category": "Transportation",
-  "message": "Airport ride tracked! $45 for Uber."
-}
+Input: "打车去机场花了45"
+Output: { "type": "expense", "amount": 45, "merchant": "打车", "category": "Transportation", "message": "机场行程已记录，打车 45 元。" }
 
 OUTPUT FORMAT (JSON only, no explanation, no markdown):
 {
+  "type": "<expense|income>",
   "amount": <number>,
   "merchant": "<string>",
-  "category": "<one of the categories above>",
-  "message": "<natural, human-like confirmation - vary the style>"
+  "category": "<category or Income>",
+  "message": "<natural confirmation in user's language>"
 }
 
 CRITICAL:
 1. Respond ONLY with the JSON object
 2. No explanation, no markdown code blocks, just pure JSON
-3. Make the message sound genuinely human and conversational
-4. VARY your response style - don't be repetitive!`;
+3. VARY your response style - don't be repetitive!`;
 }
 
-export const SYSTEM_MESSAGE = `You are a warm, friendly financial assistant having a natural conversation. You sound like a helpful friend, not a robot. Keep responses brief, casual, and varied.`;
+export const SYSTEM_MESSAGE = `You are a bilingual financial assistant. You understand Chinese and English naturally, and reply in the user's language. You sound like a helpful friend, not a robot. Keep responses brief, casual, and varied.`;
 
 export const AI_CONFIG = {
   model: '@cf/meta/llama-3.1-8b-instruct-awq',
   temperature: 0.3,
-  max_tokens: 200
+  max_tokens: 250
 } as const;

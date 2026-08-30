@@ -85,15 +85,17 @@ function fallbackDeleteIdentification(userInput: string, expenses: Expense[]): D
   const lower = userInput.toLowerCase();
 
   // Check for "all" keyword for bulk delete
-  const isBulkDelete = /(?:all|every)/.test(lower);
+  const isBulkDelete = /(?:all|every)/.test(lower) || /(全部|所有)/.test(userInput);
 
-  if (/(?:last|recent|latest)/.test(lower) && !isBulkDelete) {
+  if (/(?:last|recent|latest)/.test(lower) || /(上一笔|最近一笔|刚才那笔|最后一笔)/.test(userInput)) {
+    if (!isBulkDelete) {
     const lastExpense = expenses[expenses.length - 1];
     return {
       expenseId: lastExpense.id,
       message: `Deleted your last expense: $${lastExpense.amount} for ${lastExpense.merchant}.`,
       success: true
     };
+    }
   }
 
   for (const expense of expenses.reverse()) {

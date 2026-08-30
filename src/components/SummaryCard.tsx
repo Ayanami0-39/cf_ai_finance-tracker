@@ -1,39 +1,54 @@
 import { Card } from "@/components/ui/card";
+import { ArrowDownRight, ArrowUpRight, Wallet } from "lucide-react";
+import type { Expense } from "@/types";
 
-interface SummaryCardProps {
-  totalSpent: number;
-  topCategory: string;
-  expenseCount: number;
+interface SummaryCardsProps {
+  expenses: Expense[];
 }
 
-export function SummaryCard({
-  totalSpent,
-  topCategory,
-  expenseCount,
-}: SummaryCardProps) {
-  return (
-    <Card className="p-6 bg-gradient-to-br from-white to-gray-50/50 shadow-sm mb-4">
-      <div className="space-y-4">
-        <div>
-          <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">
-            Total Spent
-          </p>
-          <p className="text-3xl font-bold text-gray-900">
-            ${totalSpent.toFixed(2)}
-          </p>
-        </div>
+export function SummaryCards({ expenses }: SummaryCardsProps) {
+  const totalExpense = expenses
+    .filter((e) => e.type !== "income")
+    .reduce((sum, e) => sum + e.amount, 0);
+  const totalIncome = expenses
+    .filter((e) => e.type === "income")
+    .reduce((sum, e) => sum + e.amount, 0);
+  const balance = totalIncome - totalExpense;
 
-        <div className="grid grid-cols-2 gap-4 pt-4 border-t">
-          <div>
-            <p className="text-xs text-gray-500 mb-1">Top Category</p>
-            <p className="text-sm font-medium text-gray-900">{topCategory}</p>
-          </div>
-          <div>
-            <p className="text-xs text-gray-500 mb-1">Entries</p>
-            <p className="text-sm font-medium text-gray-900">{expenseCount}</p>
-          </div>
+  return (
+    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+      {/* Balance - prominent */}
+      <Card className="p-5 bg-primary text-primary-foreground border-primary rounded-xl">
+        <div className="flex items-center gap-2 mb-2">
+          <Wallet className="w-4 h-4 opacity-80" />
+          <p className="text-xs opacity-80">结余 / Balance</p>
         </div>
-      </div>
-    </Card>
+        <p className="text-3xl font-bold tabular-nums tracking-tight">
+          {balance < 0 ? "-" : ""}${Math.abs(balance).toFixed(2)}
+        </p>
+      </Card>
+
+      {/* Income */}
+      <Card className="p-5 rounded-xl">
+        <div className="flex items-center gap-2 mb-2">
+          <ArrowUpRight className="w-4 h-4 text-income" />
+          <p className="text-xs text-muted-foreground">收入 / Income</p>
+        </div>
+        <p className="text-2xl font-semibold tabular-nums text-income">
+          +${totalIncome.toFixed(2)}
+        </p>
+      </Card>
+
+      {/* Expense */}
+      <Card className="p-5 rounded-xl">
+        <div className="flex items-center gap-2 mb-2">
+          <ArrowDownRight className="w-4 h-4 text-destructive" />
+          <p className="text-xs text-muted-foreground">支出 / Expense</p>
+        </div>
+        <p className="text-2xl font-semibold tabular-nums text-destructive">
+          -${totalExpense.toFixed(2)}
+        </p>
+      </Card>
+    </div>
   );
 }

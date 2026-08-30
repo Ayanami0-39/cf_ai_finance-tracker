@@ -1,4 +1,7 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useRef, useState } from 'react';
+
+// 语音识别语言：zh-CN 优先中文识别，可通过环境变量切换
+const SPEECH_LANG = import.meta.env.VITE_SPEECH_LANG || 'zh-CN';
 
 export function useSpeechRecognition() {
   const [transcript, setTranscript] = useState('');
@@ -15,7 +18,7 @@ export function useSpeechRecognition() {
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
 
     if (!SpeechRecognition) {
-      alert('Your browser does not support speech recognition');
+      alert('当前浏览器不支持语音识别 / Your browser does not support speech recognition');
       return;
     }
 
@@ -23,9 +26,9 @@ export function useSpeechRecognition() {
 
     recognition.continuous = true;
     recognition.interimResults = true;
-    recognition.lang = 'en-US';
+    // 中文优先：zh-CN 识别普通话；需要英文时设置 VITE_SPEECH_LANG=en-US
+    recognition.lang = SPEECH_LANG;
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     recognition.onresult = (event: any) => {
       let fullTranscript = '';
 
@@ -46,12 +49,13 @@ export function useSpeechRecognition() {
         clearTimeout(silenceTimerRef.current);
       }
 
+      // 中文语句较短，2.5s 静音判定一句话结束
       silenceTimerRef.current = setTimeout(() => {
         if (fullTranscript && fullTranscript !== lastSentTranscriptRef.current) {
           lastSentTranscriptRef.current = fullTranscript;
           setIsFinal(true);
         }
-      }, 2000);
+      }, 2500);
     };
 
     recognition.onend = () => {

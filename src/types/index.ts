@@ -6,6 +6,7 @@ export interface Expense {
   description: string;
   date: string;
   createdAt: number;
+  type?: 'expense' | 'income';
 }
 
 export interface Message {
@@ -27,9 +28,7 @@ export interface VoiceCommandResponse {
     expense?: Expense;
     count?: number;
   };
-}
-
-export interface ExpenseResponse {
+}export interface ExpenseResponse {
   success: boolean;
   expenses: Expense[];
   count: number;

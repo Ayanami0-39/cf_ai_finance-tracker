@@ -39,24 +39,24 @@ export function ChatSection({
   };
 
   return (
-    <div className="flex flex-col h-full bg-gradient-to-b from-gray-50/30 to-white">
+    <div className="flex flex-col h-full">
       {/* Header */}
-      <div className="p-6 pb-4">
-        <h2 className="text-xl font-semibold text-gray-900 mb-1">
-          Smart Money, Smarter Conversations
+      <div className="px-6 pt-5 pb-3">
+        <h2 className="text-base font-semibold text-foreground">
+          智能记账助手
         </h2>
-        <p className="text-sm text-gray-500">
-          Your personal financial intelligence.
+        <p className="text-xs text-muted-foreground mt-0.5">
+          说出或输入你的收支，我来帮你记录 · Speak Chinese or English
         </p>
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-6 py-4 space-y-2">
+      <div className="flex-1 overflow-y-auto px-6 py-3 space-y-1">
         {messages.length === 0 && (
-          <div className="text-center py-12">
-            <p className="text-sm text-gray-400">Start a conversation...</p>
-            <p className="text-xs text-gray-300 mt-2">
-              Try: "I spent $50 on coffee" or "How much did I spend on food?"
+          <div className="text-center py-10">
+            <p className="text-sm text-muted-foreground">开始对话吧…</p>
+            <p className="text-xs text-muted-foreground/70 mt-2">
+              试试：「我在星巴克花了35块买拿铁」或「这个月花了多少钱」
             </p>
           </div>
         )}
@@ -66,19 +66,19 @@ export function ChatSection({
         ))}
 
         {isLoading && (
-          <div className="flex justify-start mb-4">
-            <div className="bg-white rounded-2xl px-4 py-3">
+          <div className="flex justify-start mb-3">
+            <div className="bg-card border rounded-xl px-4 py-3">
               <div className="flex gap-1">
                 <div
-                  className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"
+                  className="w-2 h-2 bg-muted-foreground/50 rounded-full animate-bounce"
                   style={{ animationDelay: "0ms" }}
                 />
                 <div
-                  className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"
+                  className="w-2 h-2 bg-muted-foreground/50 rounded-full animate-bounce"
                   style={{ animationDelay: "150ms" }}
                 />
                 <div
-                  className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"
+                  className="w-2 h-2 bg-muted-foreground/50 rounded-full animate-bounce"
                   style={{ animationDelay: "300ms" }}
                 />
               </div>
@@ -90,18 +90,18 @@ export function ChatSection({
       </div>
 
       {/* Input Bar */}
-      <div className="p-6 pt-4">
+      <div className="p-4 pt-2">
         <form
           onSubmit={handleSubmit}
-          className="flex gap-2 items-center bg-white rounded-full px-4 py-2 shadow-sm"
+          className="flex gap-2 items-center bg-card border rounded-full px-4 py-2"
         >
           <Input
             value={input}
             onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
               setInput(e.target.value)
             }
-            placeholder="Type a message..."
-            className="flex-1 border-0 focus-visible:ring-0 focus-visible:ring-offset-0 bg-transparent placeholder:text-gray-400"
+            placeholder="输入收支，如「午饭花了30块」…"
+            className="flex-1 border-0 focus-visible:ring-0 focus-visible:ring-offset-0 bg-transparent placeholder:text-muted-foreground/60"
             disabled={isLoading}
           />
 
@@ -110,7 +110,7 @@ export function ChatSection({
             size="icon"
             variant="ghost"
             onClick={onVoiceClick}
-            className="rounded-full h-9 w-9 hover:bg-emerald-50 hover:text-emerald-600 transition-colors"
+            className="rounded-full h-9 w-9 hover:bg-secondary hover:text-primary transition-colors"
           >
             <Mic className="w-4 h-4" />
           </Button>
@@ -119,7 +119,7 @@ export function ChatSection({
             type="submit"
             size="icon"
             disabled={!input.trim() || isLoading}
-            className="rounded-full h-9 w-9 bg-gradient-to-br from-emerald-400 to-teal-400 hover:from-emerald-500 hover:to-teal-500 text-white"
+            className="rounded-full h-9 w-9 bg-primary hover:bg-primary/90 text-primary-foreground"
           >
             <Send className="w-4 h-4" />
           </Button>

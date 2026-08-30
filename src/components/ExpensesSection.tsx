@@ -1,4 +1,4 @@
-import { SummaryCard } from "./SummaryCard";
+import { SummaryCards } from "./SummaryCard";
 import { ExpenseCard } from "./ExpenseCard";
 import type { Expense } from "@/types";
 
@@ -8,51 +8,38 @@ interface ExpensesSectionProps {
 }
 
 export function ExpensesSection({ expenses }: ExpensesSectionProps) {
-  const totalSpent = expenses.reduce((sum, exp) => sum + exp.amount, 0);
-
-  const categoryCounts = expenses.reduce((acc, exp) => {
-    acc[exp.category] = (acc[exp.category] || 0) + 1;
-    return acc;
-  }, {} as Record<string, number>);
-
-  const topCategory =
-    Object.entries(categoryCounts).sort((a, b) => b[1] - a[1])[0]?.[0] ||
-    "None";
+  const sorted = [...expenses].sort((a, b) => b.createdAt - a.createdAt);
 
   return (
-    <div className="flex flex-col h-full bg-white">
-      {/* Header */}
-      <div className="p-6 pb-4">
-        <h2 className="text-xl font-semibold text-gray-900">
-          This Month's Expenses
-        </h2>
+    <div className="flex flex-col h-full">
+      {/* Summary band */}
+      <div className="p-4 pb-2">
+        <SummaryCards expenses={expenses} />
       </div>
 
-      {/* Summary */}
-      <div className="px-6">
-        <SummaryCard
-          totalSpent={totalSpent}
-          topCategory={topCategory}
-          expenseCount={expenses.length}
-        />
-      </div>
+      {/* Transaction list */}
+      <div className="flex-1 overflow-y-auto px-4 pb-6">
+        <div className="flex items-center justify-between px-1 py-3">
+          <h2 className="text-sm font-semibold text-foreground">
+            交易记录 / Transactions
+          </h2>
+          <span className="text-xs text-muted-foreground">
+            共 {sorted.length} 笔
+          </span>
+        </div>
 
-      {/* Expenses List */}
-      <div className="flex-1 overflow-y-auto px-6 pb-6">
-        {expenses.length === 0 ? (
-          <div className="text-center py-12">
-            <p className="text-sm text-gray-400">No expenses yet</p>
-            <p className="text-xs text-gray-300 mt-2">
-              Add your first expense via chat
+        {sorted.length === 0 ? (
+          <div className="text-center py-12 bg-card rounded-xl border">
+            <p className="text-sm text-muted-foreground">还没有交易记录</p>
+            <p className="text-xs text-muted-foreground/70 mt-2">
+              通过左侧对话框语音或文字记一笔吧
             </p>
           </div>
         ) : (
-          <div className="space-y-1">
-            {expenses
-              .sort((a, b) => b.createdAt - a.createdAt)
-              .map((expense) => (
-                <ExpenseCard key={expense.id} expense={expense} />
-              ))}
+          <div className="bg-card rounded-xl border overflow-hidden">
+            {sorted.map((expense) => (
+              <ExpenseCard key={expense.id} expense={expense} />
+            ))}
           </div>
         )}
       </div>

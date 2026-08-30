@@ -1,3 +1,5 @@
+export type TrxType = 'expense' | 'income';
+
 export interface Expense {
   id: string;
   amount: number;
@@ -6,6 +8,7 @@ export interface Expense {
   merchant?: string;
   date: string;
   createdAt: number;
+  type?: TrxType;
 }
 
 export interface AddExpenseRequest {
