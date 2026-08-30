@@ -4,6 +4,7 @@ import type { Expense } from "@/types";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { X, Loader2, SquarePen, AlertCircle } from "lucide-react";
+import { resolveCategoryMeta } from "@/lib/category-meta";
 
 /** 分类选项（与 AI 分类列表一致，含收入） */
 const CATEGORY_OPTIONS = [
@@ -258,18 +259,33 @@ export function EditExpenseModal({
                   />
                 </div>
                 <div>
-                  <label className="block text-xs text-muted-foreground mb-1.5">分类</label>
-                  <select
-                    value={category}
-                    onChange={(e) => setCategory(e.target.value)}
-                    className="w-full h-9 rounded-md border border-input bg-background px-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                  >
-                    {CATEGORY_OPTIONS.map((opt) => (
-                      <option key={opt} value={opt}>
-                        {opt}
-                      </option>
-                    ))}
-                  </select>
+                  <label className="block text-xs text-muted-foreground mb-1.5">
+                    分类{category ? ` · ${category}` : ""}
+                  </label>
+                  <div className="grid grid-cols-6 gap-1.5">
+                    {CATEGORY_OPTIONS.map((opt) => {
+                      const m = resolveCategoryMeta(opt);
+                      const Icon = m.icon;
+                      const selected = category === opt;
+                      return (
+                        <button
+                          key={opt}
+                          type="button"
+                          title={opt}
+                          aria-label={opt}
+                          aria-pressed={selected}
+                          onClick={() => setCategory(opt)}
+                          className={`relative aspect-square rounded-lg bg-gradient-to-br ${m.gradient} flex items-center justify-center transition-all ${
+                            selected
+                              ? "ring-2 ring-primary ring-offset-1 ring-offset-card scale-105 shadow-md"
+                              : "opacity-80 hover:opacity-100 hover:scale-105 active:scale-95"
+                          }`}
+                        >
+                          <Icon className="w-3.5 h-3.5 text-white" strokeWidth={2.2} />
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
               </div>
 
