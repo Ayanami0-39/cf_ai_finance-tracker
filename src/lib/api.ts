@@ -110,8 +110,15 @@ export const api = {
     return response.json();
   },
 
-  async getChatHistory(userId: string): Promise<ChatResponse> {
-    const response = await fetch(`${API_BASE}/chat/${userId}`, {
+  async getChatHistory(
+    userId: string,
+    opts?: { before?: number; limit?: number }
+  ): Promise<ChatResponse> {
+    const params = new URLSearchParams();
+    if (opts?.before != null) params.set('before', String(opts.before));
+    if (opts?.limit != null) params.set('limit', String(opts.limit));
+    const qs = params.toString();
+    const response = await fetch(`${API_BASE}/chat/${userId}${qs ? `?${qs}` : ''}`, {
       headers: authHeaders(),
     });
 

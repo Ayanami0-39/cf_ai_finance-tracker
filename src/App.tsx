@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { TopBar } from "./components/TopBar";
 import { ChatSection } from "./components/ChatSection";
 import { ExpensesSection } from "./components/ExpensesSection";
@@ -139,6 +139,12 @@ function App() {
     }
   };
 
+  // 聊天分页：默认只加载最新 CHAT_PAGE_SIZE 条，更早的按需翻页加载
+  const CHAT_PAGE_SIZE = 20;
+  const [chatHasMore, setChatHasMore] = useState(false);
+  const [loadingOlder, setLoadingOlder] = useState(false);
+  const oldestChatTsRef = useRef<number | null>(null);
+
   const loadExpenses = async (uid: string) => {
     try {
       const response = await api.getExpenses(uid);
@@ -152,12 +158,38 @@ function App() {
 
   const loadChatHistory = async (uid: string) => {
     try {
-      const response = await api.getChatHistory(uid);
+      const response = await api.getChatHistory(uid, { limit: CHAT_PAGE_SIZE });
       if (response.success) {
         setMessages(response.messages);
+        oldestChatTsRef.current = response.messages.length
+          ? response.messages[0].timestamp
+          : null;
+        setChatHasMore(Boolean(response.hasMore));
       }
     } catch (error) {
       // Error loading chat history
+    }
+  };
+
+  // 向上翻页：拉取当前最早一条之前的更早消息， prepend 到列表头
+  const loadOlderMessages = async () => {
+    const uid = activeScope;
+    const before = oldestChatTsRef.current;
+    if (!uid || before == null || loadingOlder || !chatHasMore) return;
+    setLoadingOlder(true);
+    try {
+      const response = await api.getChatHistory(uid, { before, limit: CHAT_PAGE_SIZE });
+      if (response.success) {
+        setMessages((prev) => [...response.messages, ...prev]);
+        if (response.messages.length > 0) {
+          oldestChatTsRef.current = response.messages[0].timestamp;
+        }
+        setChatHasMore(Boolean(response.hasMore));
+      }
+    } catch (error) {
+      // Error loading older messages
+    } finally {
+      setLoadingOlder(false);
     }
   };
 
@@ -295,6 +327,9 @@ function App() {
             isLoading={isLoading}
             onSendMessage={handleSendMessage}
             onVoiceClick={() => setIsVoiceMode(true)}
+            onLoadOlder={loadOlderMessages}
+            hasMoreOlder={chatHasMore}
+            loadingOlder={loadingOlder}
           />
         </div>
         <div className="w-[38%] h-full px-4 py-2 overflow-hidden">
@@ -335,6 +370,9 @@ function App() {
               isLoading={isLoading}
               onSendMessage={handleSendMessage}
               onVoiceClick={() => setIsVoiceMode(true)}
+              onLoadOlder={loadOlderMessages}
+              hasMoreOlder={chatHasMore}
+              loadingOlder={loadingOlder}
             />
           </TabsContent>
 

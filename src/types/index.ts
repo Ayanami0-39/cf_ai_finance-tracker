@@ -51,4 +51,6 @@ export interface ChatResponse {
   success: boolean;
   messages: Message[];
   count: number;
+  /** 分页加载：是否还有更早的消息 */
+  hasMore?: boolean;
 }

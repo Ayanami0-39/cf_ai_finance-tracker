@@ -296,11 +296,25 @@ app.patch('/api/expenses/:userId/:expenseId', async (c) => {
 app.get('/api/chat/:userId', async (c) => {
   try {
     const userId = c.req.param('userId');
+
+    // 游标分页：?before=<timestamp> 返回该时间戳之前的消息（新→旧取一页，返回旧→新升序）。
+    // 不带 before 时全量返回（兼容旧客户端/查询问答的上下文需求）。
+    const beforeParam = c.req.query('before');
+    const before = beforeParam ? Number(beforeParam) : null;
+    const limit = Math.min(Math.max(Number(c.req.query('limit') || 20), 1), 100);
+
     const id = c.env.FINANCE_MEMORY.idFromName(userId);
     const stub = c.env.FINANCE_MEMORY.get(id);
-    const messages = await stub.getChatMessages();
+    let messages = await stub.getChatMessages();
 
-    return c.json({ success: true, messages, count: messages.length });
+    let hasMore = false;
+    if (before !== null && Number.isFinite(before)) {
+      const older = messages.filter((m) => m.timestamp < before);
+      hasMore = older.length > limit;
+      messages = hasMore ? older.slice(-limit) : older;
+    }
+
+    return c.json({ success: true, messages, count: messages.length, hasMore });
   } catch (err) {
     return c.json({ error: String(err) }, 500);
   }

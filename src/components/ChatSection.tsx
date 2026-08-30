@@ -10,6 +10,12 @@ interface ChatSectionProps {
   onVoiceClick: () => void;
   messages: Message[];
   isLoading: boolean;
+  /** 向上翻页：加载更早的消息 */
+  onLoadOlder?: () => Promise<void> | void;
+  /** 是否还有更早的消息可加载 */
+  hasMoreOlder?: boolean;
+  /** 正在加载更早的消息 */
+  loadingOlder?: boolean;
 }
 
 export function ChatSection({
@@ -17,17 +23,46 @@ export function ChatSection({
   onVoiceClick,
   messages,
   isLoading,
+  onLoadOlder,
+  hasMoreOlder,
+  loadingOlder,
 }: ChatSectionProps) {
   const [input, setInput] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  const scrollToBottom = (smooth = true) => {
+    messagesEndRef.current?.scrollIntoView({ behavior: smooth ? "smooth" : "auto" });
   };
 
+  // 新消息（追加在尾部）时滚动到底部
   useEffect(() => {
     scrollToBottom();
-  }, [messages]);
+  }, [messages.length, isLoading]);
+
+  // 翻页加载更早消息后：保持视口位置（记录加载前的滚动高度差，恢复到同一批消息上）
+  const prevScrollHeightRef = useRef(0);
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el || !loadingOlder) return;
+    prevScrollHeightRef.current = el.scrollHeight - el.scrollTop;
+  }, [loadingOlder]);
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el || loadingOlder || prevScrollHeightRef.current === 0) return;
+    el.scrollTop = el.scrollHeight - prevScrollHeightRef.current;
+    prevScrollHeightRef.current = 0;
+  }, [messages, loadingOlder]);
+
+  const handleLoadOlder = async () => {
+    if (!onLoadOlder || loadingOlder) return;
+    // 记录当前视口底部位置，加载后恢复
+    const el = scrollRef.current;
+    if (el) prevScrollHeightRef.current = el.scrollHeight - el.scrollTop;
+    await onLoadOlder();
+    if (!loadingOlder) prevScrollHeightRef.current = 0;
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -50,8 +85,26 @@ export function ChatSection({
         </p>
       </div>
 
-      {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-4 md:px-6 py-3 space-y-1 mx-auto w-full max-w-3xl">
+      {/* Messages：限高滚动，超出部分通过「加载更早」翻页查看 */}
+      <div
+        ref={scrollRef}
+        className="flex-1 overflow-y-auto px-4 md:px-6 py-3 space-y-1 mx-auto w-full max-w-3xl min-h-0"
+      >
+        {hasMoreOlder && messages.length > 0 && (
+          <div className="flex justify-center py-1.5">
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              disabled={loadingOlder}
+              onClick={handleLoadOlder}
+              className="text-xs text-muted-foreground hover:text-foreground h-7 px-3 rounded-full"
+            >
+              {loadingOlder ? "加载中…" : "↑ 加载更早的消息"}
+            </Button>
+          </div>
+        )}
+
         {messages.length === 0 && (
           <div className="text-center py-10">
             <p className="text-sm text-muted-foreground">开始对话吧…</p>
