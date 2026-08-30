@@ -37,7 +37,8 @@ export async function processExpenseInput(
             content: userPrompt
           }
         ],
-        max_tokens: AI_CONFIG.max_tokens
+        max_tokens: AI_CONFIG.max_tokens,
+        ...AI_CONFIG.params
       }
     ) as Record<string, unknown>;
 

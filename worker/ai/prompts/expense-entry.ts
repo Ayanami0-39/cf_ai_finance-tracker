@@ -129,7 +129,16 @@ CRITICAL:
 
 export const SYSTEM_MESSAGE = `You are a transaction-parsing engine. Convert the user's message into ONE structured JSON object. Chinese and English input both supported. Accuracy of extraction is your only goal.`;
 
+// GLM-4.7-Flash 是 reasoning 模型，enable_thinking 默认开启；记账解析只需要
+// 一个小 JSON，关闭思考可显著降低首字延迟并避免思考内容混入输出。
 export const AI_CONFIG = {
   model: '@cf/zai-org/glm-4.7-flash',
-  max_tokens: 4000
+  max_tokens: 4000,
+  params: {
+    // OpenAI 兼容端点参数：关闭深度思考；单轮任务无需保留思考上下文
+    chat_template_kwargs: {
+      enable_thinking: false,
+      clear_thinking: true
+    }
+  }
 } as const;
