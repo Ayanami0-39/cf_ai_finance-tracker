@@ -47,6 +47,13 @@
     height: 100%;
   }
 
+  /* 移动端动态视口：dvh 由 modern browsers 支持，vh 作兜底 */
+  html,
+  body {
+    height: 100dvh;
+    overscroll-behavior: none;
+  }
+
   #root {
     height: 100%;
   }

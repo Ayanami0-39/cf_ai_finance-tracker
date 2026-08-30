@@ -32,7 +32,7 @@ export function ExpensesSection({ expenses }: ExpensesSectionProps) {
           <div className="text-center py-12 bg-card rounded-xl border">
             <p className="text-sm text-muted-foreground">还没有交易记录</p>
             <p className="text-xs text-muted-foreground/70 mt-2">
-              通过左侧对话框语音或文字记一笔吧
+              在「对话」页语音或文字记一笔吧
             </p>
           </div>
         ) : (

@@ -145,7 +145,11 @@ export function VoiceMode({
             animate={{ scale: 1, opacity: 1 }}
             exit={{ scale: 0.9, opacity: 0 }}
             transition={{ duration: 0.3 }}
-            className="relative w-[90%] max-w-md bg-card border rounded-3xl shadow-2xl p-8"
+            className="relative w-[90%] max-w-md bg-card border rounded-3xl shadow-2xl p-8 md:p-8 max-md:rounded-b-none max-md:w-full max-md:max-w-full max-md:min-h-[85dvh] max-md:mt-auto max-md:rounded-t-3xl max-md:px-6 max-md:pt-8"
+            style={{
+              paddingBottom:
+                "max(2rem, env(safe-area-inset-bottom) + 1.5rem)",
+            }}
           >
             <div className="flex flex-col items-center gap-6">
               {/* Animated Voice Circle with Audio Visualization */}
@@ -226,7 +230,7 @@ export function VoiceMode({
               <div className="flex items-center justify-center gap-6 mt-4">
                 <motion.button
                   onClick={handleMuteToggle}
-                  className={`w-16 h-16 rounded-full flex items-center justify-center transition-all shadow-lg ${
+                  className={`w-14 h-14 md:w-16 md:h-16 rounded-full flex items-center justify-center transition-all shadow-lg ${
                     isListening
                       ? "bg-destructive hover:bg-destructive/90"
                       : "bg-primary hover:bg-primary/90"
@@ -244,7 +248,7 @@ export function VoiceMode({
 
                 <motion.button
                   onClick={handleClose}
-                  className="w-16 h-16 rounded-full bg-destructive/90 hover:bg-destructive flex items-center justify-center transition-all shadow-lg"
+                  className="w-14 h-14 md:w-16 md:h-16 rounded-full bg-destructive/90 hover:bg-destructive flex items-center justify-center transition-all shadow-lg"
                   whileHover={{ scale: 1.1 }}
                   whileTap={{ scale: 0.95 }}
                   aria-label="结束语音"

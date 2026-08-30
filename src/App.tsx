@@ -4,7 +4,8 @@ import { ChatSection } from "./components/ChatSection";
 import { ExpensesSection } from "./components/ExpensesSection";
 import { VoiceMode } from "./components/VoiceMode";
 import { AuthGate } from "./components/AuthGate";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsContent } from "@/components/ui/tabs";
+import { MessageCircle, ReceiptText } from "lucide-react";
 import { api } from "./lib/api";
 import { getUserId } from "./lib/user";
 import type { Message, Expense } from "./types";
@@ -16,6 +17,7 @@ function App() {
   const [isLoading, setIsLoading] = useState(false);
   const [isVoiceMode, setIsVoiceMode] = useState(false);
   const [userId, setUserId] = useState<string>("");
+  const [mobileTab, setMobileTab] = useState<"chat" | "expenses">("chat");
 
   // Initialize userId and load data
   useEffect(() => {
@@ -159,25 +161,11 @@ function App() {
       </div>
 
       <div className="md:hidden flex-1 overflow-hidden flex flex-col">
-        <div className="px-3 pt-2">
-          <SummaryCardsInline expenses={expenses} />
-        </div>
-        <Tabs defaultValue="chat" className="h-full flex flex-col flex-1">
-          <TabsList className="w-full grid grid-cols-2 rounded-none h-11 bg-muted">
-            <TabsTrigger
-              value="chat"
-              className="rounded-lg mx-2 data-[state=active]:bg-card"
-            >
-              对话
-            </TabsTrigger>
-            <TabsTrigger
-              value="expenses"
-              className="rounded-lg mx-2 data-[state=active]:bg-card"
-            >
-              记录
-            </TabsTrigger>
-          </TabsList>
-
+        <Tabs
+          value={mobileTab}
+          onValueChange={(v) => setMobileTab(v as "chat" | "expenses")}
+          className="h-full flex flex-col flex-1"
+        >
           <TabsContent value="chat" className="flex-1 mt-0 overflow-hidden">
             <ChatSection
               messages={messages}
@@ -191,6 +179,8 @@ function App() {
             <ExpensesSection expenses={expenses} />
           </TabsContent>
         </Tabs>
+
+        <MobileTabBar tab={mobileTab} onChange={setMobileTab} />
       </div>
 
       <VoiceMode
@@ -204,10 +194,61 @@ function App() {
   );
 }
 
-// Mobile: compact summary band above tabs
-import { SummaryCards } from "./components/SummaryCard";
-function SummaryCardsInline({ expenses }: { expenses: Expense[] }) {
-  return <SummaryCards expenses={expenses} />;
+// Mobile: bottom tab bar with safe-area padding
+function MobileTabBar({
+  tab,
+  onChange,
+}: {
+  tab: "chat" | "expenses";
+  onChange: (t: "chat" | "expenses") => void;
+}) {
+  return (
+    <nav
+      className="md:hidden bg-card border-t grid grid-cols-2"
+      style={{
+        paddingBottom: "max(env(safe-area-inset-bottom), 6px)",
+        paddingTop: "6px",
+      }}
+    >
+      <MobileTabButton
+        active={tab === "chat"}
+        onClick={() => onChange("chat")}
+        icon={<MessageCircle className="w-5 h-5" />}
+        label="对话"
+      />
+      <MobileTabButton
+        active={tab === "expenses"}
+        onClick={() => onChange("expenses")}
+        icon={<ReceiptText className="w-5 h-5" />}
+        label="记录"
+      />
+    </nav>
+  );
+}
+
+function MobileTabButton({
+  active,
+  onClick,
+  icon,
+  label,
+}: {
+  active: boolean;
+  onClick: () => void;
+  icon: React.ReactNode;
+  label: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`flex flex-col items-center justify-center gap-0.5 h-12 text-xs transition-colors ${
+        active ? "text-primary font-medium" : "text-muted-foreground"
+      }`}
+    >
+      {icon}
+      {label}
+    </button>
+  );
 }
 
 export default App;

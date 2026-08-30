@@ -41,7 +41,7 @@ export function ChatSection({
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
-      <div className="px-6 pt-5 pb-3">
+      <div className="px-4 md:px-6 pt-4 md:pt-5 pb-3">
         <h2 className="text-base font-semibold text-foreground">
           智能记账助手
         </h2>
@@ -51,7 +51,7 @@ export function ChatSection({
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-6 py-3 space-y-1">
+      <div className="flex-1 overflow-y-auto px-4 md:px-6 py-3 space-y-1 mx-auto w-full max-w-3xl">
         {messages.length === 0 && (
           <div className="text-center py-10">
             <p className="text-sm text-muted-foreground">开始对话吧…</p>
@@ -90,7 +90,10 @@ export function ChatSection({
       </div>
 
       {/* Input Bar */}
-      <div className="p-4 pt-2">
+      <div
+        className="p-4 pt-2 mx-auto w-full max-w-3xl"
+        style={{ paddingBottom: "max(1rem, env(safe-area-inset-bottom) + 4px)" }}
+      >
         <form
           onSubmit={handleSubmit}
           className="flex gap-2 items-center bg-card border rounded-full px-4 py-2"
