@@ -7,12 +7,14 @@ export interface Expense {
   date: string;
   createdAt: number;
   type?: 'expense' | 'income';
+  by?: string;
 }
 
 export interface Message {
   id: string;
   role: 'user' | 'ai';
   content: string;
+  by?: string;
   expense?: {
     merchant: string;
     amount: number;

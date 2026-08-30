@@ -1,6 +1,12 @@
 import { MemberSwitcher } from "./MemberSwitcher";
 
-export function TopBar({ onMemberChange }: { onMemberChange?: (id: string) => void }) {
+export function TopBar({
+  onMemberChange,
+  onScopeChange,
+}: {
+  onMemberChange?: (id: string) => void;
+  onScopeChange?: () => void;
+}) {
   return (
     <div className="h-14 bg-card border-b flex items-center justify-between px-4 md:px-6 sticky top-0 z-10">
       <div className="flex items-center gap-3">
@@ -16,7 +22,7 @@ export function TopBar({ onMemberChange }: { onMemberChange?: (id: string) => vo
         <span className="text-xs text-muted-foreground hidden sm:block">
           数据保存在本设备会话
         </span>
-        <MemberSwitcher onChange={onMemberChange} />
+        <MemberSwitcher onChange={onMemberChange} onScopeChange={onScopeChange} />
       </div>
     </div>
   );

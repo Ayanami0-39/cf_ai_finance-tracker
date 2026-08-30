@@ -51,6 +51,60 @@ export class FinanceMemory extends DurableObject<Env> {
     await this.ctx.storage.delete('expenses');
   }
 
+  // ---- Family registry（家庭码 → 成员列表，服务端共享） ----
+
+  async getFamilyMembers(): Promise<Array<{ id: string; name: string; emoji: string }>> {
+    return (await this.ctx.storage.get('familyMembers')) || [];
+  }
+
+  async setFamilyMembers(
+    members: Array<{ id: string; name: string; emoji: string }>
+  ): Promise<void> {
+    await this.ctx.storage.put('familyMembers', members);
+  }
+
+  // ---- Bulk import（加入家庭时迁移本机历史数据） ----
+
+  async importExpenses(list: Expense[]): Promise<number> {
+    const existing = (await this.ctx.storage.get<Expense[]>('expenses')) || [];
+    const seen = new Set(existing.map((e) => e.id));
+    let added = 0;
+    for (const e of list) {
+      if (e && e.id && !seen.has(e.id)) {
+        existing.push(e);
+        seen.add(e.id);
+        added++;
+      }
+    }
+    if (added > 0) {
+      existing.sort((a, b) => a.createdAt - b.createdAt);
+      await this.ctx.storage.put('expenses', existing);
+    }
+    return added;
+  }
+
+  async importChatMessages(
+    list: ChatMessage[]
+  ): Promise<number> {
+    let existing =
+      (await this.ctx.storage.get<ChatMessage[]>('chatMessages')) || [];
+    const seen = new Set(existing.map((m) => m.id));
+    let added = 0;
+    for (const m of list) {
+      if (m && m.id && !seen.has(m.id)) {
+        existing.push(m);
+        seen.add(m.id);
+        added++;
+      }
+    }
+    if (added > 0) {
+      existing.sort((a, b) => a.timestamp - b.timestamp);
+      if (existing.length > 100) existing = existing.slice(-100);
+      await this.ctx.storage.put('chatMessages', existing);
+    }
+    return added;
+  }
+
   // RPC method: Add chat message
   async addChatMessage(message: ChatMessage): Promise<void> {
     let messages = await this.ctx.storage.get<ChatMessage[]>('chatMessages');

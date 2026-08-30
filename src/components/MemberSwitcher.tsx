@@ -7,14 +7,17 @@ import {
   createMember,
   type FamilyMember,
 } from "@/lib/family";
-import { Check, Plus, Users } from "lucide-react";
+import { FamilySettings } from "./FamilySettings";
+import { Check, Plus, Users, Settings2 } from "lucide-react";
 
 const EMOJI_CHOICES = ["🙂", "😎", "👩", "👨", "👧", "👦", "👴", "👵", "🐱", "🐶"];
 
 export function MemberSwitcher({
   onChange,
+  onScopeChange,
 }: {
   onChange?: (memberId: string) => void;
+  onScopeChange?: () => void;
 }) {
   const [members, setMembers] = useState<FamilyMember[]>(() => getMembers());
   const [activeId, setActiveId] = useState<string>(() =>
@@ -22,6 +25,7 @@ export function MemberSwitcher({
   );
   const [open, setOpen] = useState(false);
   const [adding, setAdding] = useState(false);
+  const [showFamily, setShowFamily] = useState(false);
   const [name, setName] = useState("");
   const [emoji, setEmoji] = useState(EMOJI_CHOICES[0]);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -140,6 +144,17 @@ export function MemberSwitcher({
 
           {/* Add member */}
           <div className="border-t p-2">
+            <button
+              type="button"
+              onClick={() => {
+                setOpen(false);
+                setShowFamily(true);
+              }}
+              className="w-full flex items-center justify-center gap-1.5 h-9 rounded-lg text-xs font-medium text-foreground hover:bg-muted transition-colors mb-1"
+            >
+              <Settings2 className="w-4 h-4" />
+              家庭共享 / 多设备同步
+            </button>
             {!adding ? (
               <button
                 type="button"
@@ -198,6 +213,23 @@ export function MemberSwitcher({
                 </div>
               </div>
             )}
+          </div>
+        </div>
+      )}
+      {/* Family settings modal */}
+      {showFamily && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div
+            className="absolute inset-0 bg-background/80 backdrop-blur-sm"
+            onClick={() => setShowFamily(false)}
+          />
+          <div className="relative w-full max-w-sm max-h-[85vh] overflow-y-auto">
+            <FamilySettings
+              onScopeChange={() => {
+                setShowFamily(false);
+                onScopeChange?.();
+              }}
+            />
           </div>
         </div>
       )}

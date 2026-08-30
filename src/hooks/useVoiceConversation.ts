@@ -2,7 +2,8 @@ import { useState, useCallback, useRef, useEffect } from 'react';
 import { useSpeechRecognition } from './useSpeechRecognition';
 import { useElevenLabs } from './useElevenLabs';
 import { api } from '@/lib/api';
-import { getUserId } from '@/lib/user';
+import { getScopeId } from '@/lib/scope';
+import { getMembers, getActiveMemberId } from '@/lib/family';
 
 type Phase = 'idle' | 'listening' | 'thinking' | 'speaking' | 'error';
 
@@ -45,8 +46,10 @@ export function useVoiceConversation(
   // Query the server with user input using our existing API
   const queryServer = useCallback(async (message: string): Promise<{ response: string; expense?: unknown }> => {
     try {
-      const userId = getUserId();
-      const result = await api.sendVoiceCommand(userId, message);
+      const scopeId = getScopeId();
+      const members = getMembers();
+      const memberName = members.find((m) => m.id === getActiveMemberId(members))?.name;
+      const result = await api.sendVoiceCommand(scopeId, message, memberName);
 
       if (!result.success) {
         throw new Error(result.message || 'Server request failed');

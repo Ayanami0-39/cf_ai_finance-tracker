@@ -9,6 +9,7 @@ export interface Expense {
   date: string;
   createdAt: number;
   type?: TrxType;
+  by?: string;
 }
 
 export interface AddExpenseRequest {

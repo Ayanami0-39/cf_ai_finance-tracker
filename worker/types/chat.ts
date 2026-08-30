@@ -3,6 +3,7 @@ export interface ChatMessage {
   role: 'user' | 'ai';
   content: string;
   timestamp: number;
+  by?: string;
   expense?: {
     id: string;
     amount: number;

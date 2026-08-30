@@ -76,6 +76,7 @@ export function ExpenseCard({ expense, onDelete }: ExpenseCardProps) {
             month: "numeric",
             day: "numeric",
           })}
+          {expense.by ? ` • ${expense.by}` : ""}
         </p>
       </div>
 

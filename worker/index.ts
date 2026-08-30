@@ -72,18 +72,18 @@ app.get('/', (c) => {
 
 app.post('/api/expense-natural', async (c) => {
   try {
-    const body = await c.req.json();
-    const { userId, input } = body;
+  const body = await c.req.json();
+  const { userId, input, memberName } = body;
 
-    if (!userId) {
-      return c.json({ success: false, error: 'userId required' }, 400);
-    }
+  if (!userId) {
+    return c.json({ success: false, error: 'userId required' }, 400);
+  }
 
-    if (!input || typeof input !== 'string' || input.trim().length === 0) {
-      return c.json({ success: false, error: 'input required' }, 400);
-    }
+  if (!input || typeof input !== 'string' || input.trim().length === 0) {
+    return c.json({ success: false, error: 'input required' }, 400);
+  }
 
-    const aiResult = await processExpenseInput(c.env.AI, input);
+  const aiResult = await processExpenseInput(c.env.AI, input, memberName);
 
     if (!aiResult.success) {
       return c.json({
@@ -99,7 +99,9 @@ app.post('/api/expense-natural', async (c) => {
       merchant: aiResult.merchant,
       description: input,
       date: new Date().toISOString().split('T')[0],
-      createdAt: Date.now()
+      createdAt: Date.now(),
+      type: aiResult.type,
+      by: memberName
     };
 
     try {
@@ -169,7 +171,8 @@ app.post('/api/expenses', async (c) => {
       description: body.description,
       merchant: body.merchant,
       date: new Date().toISOString().split('T')[0],
-      createdAt: Date.now()
+      createdAt: Date.now(),
+      by: body.memberName || undefined
     };
 
     const id = c.env.FINANCE_MEMORY.idFromName(body.userId);
@@ -337,7 +340,8 @@ app.post('/api/voice-command', async (c) => {
         description: input,
         date: new Date().toISOString().split('T')[0],
         createdAt: Date.now(),
-        type: aiResult.type
+        type: aiResult.type,
+        by: memberName
       };
 
       try {
@@ -454,6 +458,124 @@ app.post('/api/voice-command', async (c) => {
       success: false,
       message: "Oops! Something went wrong."
     }, 500);
+  }
+});
+
+// ---- Family code endpoints ----
+
+// Create a family: generates a 6-digit code, migrates this device's data
+app.post('/api/family/create', async (c) => {
+  try {
+    const { userId, members, expenses, chatMessages } = await c.req.json();
+
+    if (!userId || !Array.isArray(members)) {
+      return c.json({ success: false, error: 'userId and members required' }, 400);
+    }
+
+    // 6 位数字家庭码（排除易混淆的 0/1，共 8^6 = 262144 组合）
+    const digits = '23456789';
+    let code = '';
+    for (let i = 0; i < 6; i++) {
+      code += digits[Math.floor(Math.random() * digits.length)];
+    }
+
+    const scopeId = `family_${code}`;
+    const id = c.env.FINANCE_MEMORY.idFromName(scopeId);
+    const stub = c.env.FINANCE_MEMORY.get(id);
+
+    // 写入家庭成员注册表（服务端共享）
+    await stub.setFamilyMembers(members);
+
+    // 迁移本机既有数据
+    let importedExpenses = 0;
+    let importedChat = 0;
+    if (Array.isArray(expenses) && expenses.length > 0) {
+      importedExpenses = await stub.importExpenses(
+        expenses.map((e: Expense) => ({ ...e, by: e.by || undefined }))
+      );
+    }
+    if (Array.isArray(chatMessages) && chatMessages.length > 0) {
+      importedChat = await stub.importChatMessages(chatMessages);
+    }
+
+    return c.json({
+      success: true,
+      code,
+      scopeId,
+      importedExpenses,
+      importedChat,
+    });
+  } catch (err) {
+    return c.json({ success: false, error: String(err) }, 500);
+  }
+});
+
+// Join a family by code
+app.post('/api/family/join', async (c) => {
+  try {
+    const { code, members, expenses, chatMessages } = await c.req.json();
+
+    if (!code || typeof code !== 'string') {
+      return c.json({ success: false, error: 'code required' }, 400);
+    }
+
+    const normalized = code.replace(/\D/g, '');
+    if (normalized.length !== 6) {
+      return c.json({ success: false, error: '家庭码应为 6 位数字' }, 400);
+    }
+
+    const scopeId = `family_${normalized}`;
+    const id = c.env.FINANCE_MEMORY.idFromName(scopeId);
+    const stub = c.env.FINANCE_MEMORY.get(id);
+
+    // 校验家庭存在（无成员注册表说明码无效或家庭未创建）
+    const existing = await stub.getFamilyMembers();
+    if (!existing || existing.length === 0) {
+      return c.json({ success: false, error: '家庭码不存在，请核对后重试' }, 404);
+    }
+
+    // 合并成员（按 id 去重）
+    const merged = [...existing];
+    for (const m of Array.isArray(members) ? members : []) {
+      if (m && m.id && !merged.some((x) => x.id === m.id)) {
+        merged.push(m);
+        await stub.setFamilyMembers(merged);
+        break;
+      }
+    }
+
+    // 迁移本机既有数据
+    let importedExpenses = 0;
+    let importedChat = 0;
+    if (Array.isArray(expenses) && expenses.length > 0) {
+      importedExpenses = await stub.importExpenses(expenses);
+    }
+    if (Array.isArray(chatMessages) && chatMessages.length > 0) {
+      importedChat = await stub.importChatMessages(chatMessages);
+    }
+
+    return c.json({
+      success: true,
+      code: normalized,
+      scopeId,
+      importedExpenses,
+      importedChat,
+    });
+  } catch (err) {
+    return c.json({ success: false, error: String(err) }, 500);
+  }
+});
+
+// Get family members registry
+app.get('/api/family/:scopeId/members', async (c) => {
+  try {
+    const param: { scopeId: string } = c.req.param();
+    const id = c.env.FINANCE_MEMORY.idFromName(param.scopeId);
+    const stub = c.env.FINANCE_MEMORY.get(id);
+    const members = await stub.getFamilyMembers();
+    return c.json({ success: true, members });
+  } catch (err) {
+    return c.json({ success: false, error: String(err) }, 500);
   }
 });
 

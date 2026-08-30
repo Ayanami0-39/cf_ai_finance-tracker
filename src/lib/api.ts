@@ -113,4 +113,61 @@ export const api = {
       throw new Error('Failed to clear chat history');
     }
   },
+
+  // ---- Family ----
+
+  async createFamily(payload: {
+    userId: string;
+    members: Array<{ id: string; name: string; emoji: string }>;
+    expenses?: unknown[];
+    chatMessages?: unknown[];
+  }): Promise<{
+    success: boolean;
+    code?: string;
+    scopeId?: string;
+    importedExpenses?: number;
+    importedChat?: number;
+    error?: string;
+  }> {
+    const response = await fetch(`${API_BASE}/family/create`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify(payload),
+    });
+    return response.json();
+  },
+
+  async joinFamily(payload: {
+    code: string;
+    members: Array<{ id: string; name: string; emoji: string }>;
+    expenses?: unknown[];
+    chatMessages?: unknown[];
+  }): Promise<{
+    success: boolean;
+    code?: string;
+    scopeId?: string;
+    importedExpenses?: number;
+    importedChat?: number;
+    error?: string;
+  }> {
+    const response = await fetch(`${API_BASE}/family/join`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify(payload),
+    });
+    return response.json();
+  },
+
+  async getFamilyMembers(scopeId: string): Promise<{
+    success: boolean;
+    members: Array<{ id: string; name: string; emoji: string }>;
+  }> {
+    const response = await fetch(`${API_BASE}/family/${scopeId}/members`, {
+      headers: authHeaders(),
+    });
+    if (!response.ok) {
+      throw new Error('Failed to fetch family members');
+    }
+    return response.json();
+  },
 };

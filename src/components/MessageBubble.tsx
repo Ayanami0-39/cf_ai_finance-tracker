@@ -16,6 +16,9 @@ export function MessageBubble({ message }: MessageBubbleProps) {
             : "bg-card border text-foreground"
         }`}
       >
+        {isUser && message.by && (
+          <p className="text-[10px] opacity-70 mb-0.5">{message.by}</p>
+        )}
         <p className="text-sm leading-relaxed">{message.content}</p>
 
         {message.expense && (

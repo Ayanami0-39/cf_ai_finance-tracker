@@ -9,6 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { MessageCircle, ReceiptText, BarChart3 } from "lucide-react";
 import { api } from "./lib/api";
 import { getMembers, getActiveMemberId, setActiveMemberId } from "./lib/family";
+import { getScopeId } from "./lib/scope";
 import { getUserId } from "./lib/user";
 import type { Message, Expense } from "./types";
 import "./App.css";
@@ -26,17 +27,28 @@ function App() {
     const members = getMembers();
     const id = members.length > 0 ? getActiveMemberId(members) : getUserId();
     setUserId(id);
-    loadExpenses(id);
-    loadChatHistory(id);
+    loadExpenses(getScopeId());
+    loadChatHistory(getScopeId());
   }, []);
 
   const handleMemberChange = (id: string) => {
     setActiveMemberId(id);
     setUserId(id);
+    // 家庭模式下数据共享，成员切换只换身份；个人模式换成员即换数据
+    const scope = getScopeId();
     setExpenses([]);
     setMessages([]);
-    loadExpenses(id);
-    loadChatHistory(id);
+    loadExpenses(scope);
+    loadChatHistory(scope);
+  };
+
+  const handleScopeChange = () => {
+    // 家庭创建/加入/退出后：重载当前作用域数据
+    const scope = getScopeId();
+    setExpenses([]);
+    setMessages([]);
+    loadExpenses(scope);
+    loadChatHistory(scope);
   };
 
   const loadExpenses = async (uid: string) => {
@@ -54,10 +66,10 @@ function App() {
     // 乐观更新：先移除本地，再请求后端
     setExpenses((prev) => prev.filter((e) => e.id !== expenseId));
     try {
-      await api.deleteExpense(userId, expenseId);
+      await api.deleteExpense(getScopeId(), expenseId);
     } catch {
       // 失败时回滚重新拉取
-      loadExpenses(userId);
+      loadExpenses(getScopeId());
     }
   };
 
@@ -74,7 +86,7 @@ function App() {
 
   const saveChatMessage = async (message: Message) => {
     try {
-      await api.saveChatMessage(userId, message);
+      await api.saveChatMessage(getScopeId(), message);
     } catch (error) {
       // Error saving chat message
     }
@@ -86,6 +98,7 @@ function App() {
       role: "user",
       content: input,
       timestamp: Date.now(),
+      by: getMembers().find((m) => m.id === userId)?.name,
     };
     setMessages((prev) => [...prev, userMessage]);
 
@@ -97,7 +110,11 @@ function App() {
     try {
       const members = getMembers();
       const memberName = members.find((m) => m.id === userId)?.name;
-      const response = await api.sendVoiceCommand(userId, input, memberName);
+      const response = await api.sendVoiceCommand(
+        getScopeId(),
+        input,
+        memberName
+      );
 
       const aiMessage: Message = {
         id: crypto.randomUUID(),
@@ -119,7 +136,7 @@ function App() {
       // Save AI message
       saveChatMessage(aiMessage);
 
-      await loadExpenses(userId);
+      await loadExpenses(getScopeId());
     } catch {
       const errorMessage: Message = {
         id: crypto.randomUUID(),
@@ -162,14 +179,14 @@ function App() {
     saveChatMessage(aiMessage);
 
     if (expense) {
-      loadExpenses(userId);
+      loadExpenses(getScopeId());
     }
   };
 
   return (
     <AuthGate>
       <div className="h-screen flex flex-col bg-background">
-        <TopBar onMemberChange={handleMemberChange} />
+        <TopBar onMemberChange={handleMemberChange} onScopeChange={handleScopeChange} />
 
       <div className="hidden md:flex flex-1 overflow-hidden">
         <div className="w-[50%] h-full ml-[8%]">
