@@ -45,6 +45,7 @@ TRANSACTION TYPE RULES:
 
 DATE RULES (IMPORTANT):
 - "8月31日工资3000" → date="YYYY-08-31" (year = current year unless it would be in the future, then last year)
+- Spaces inside dates are still dates: "7 月 5 日" → "YYYY-07-05", "8 月 15 号" → "YYYY-08-15" - ALWAYS fill the "date" field when the input mentions any date
 - "昨天花了50" → yesterday's date; "今天/前天/上周五/X天前" → resolve from TODAY'S DATE
 - "2025-08-31" / "2025年8月31日" → that exact date
 - NO date mentioned → omit the "date" field entirely (defaults to today)
@@ -134,7 +135,7 @@ CRITICAL:
 export const SYSTEM_MESSAGE = `You are a bilingual financial assistant. You understand Chinese and English naturally, and reply in the user's language. You sound like a helpful friend, not a robot. Keep responses brief, casual, and varied.`;
 
 export const AI_CONFIG = {
-  model: '@cf/meta/llama-3.1-8b-instruct',
+  model: '@cf/meta/llama-3.1-8b-instruct-fp8',
   temperature: 0.3,
   max_tokens: 4000
 } as const;

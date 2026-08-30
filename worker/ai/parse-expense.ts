@@ -25,8 +25,7 @@ export async function processExpenseInput(
     const userPrompt = getExpenseEntryPrompt(input, memberName, today);
 
     const response = await AI.run(
-      // workers-types 的 AiModels 未收录该 GA 版模型名，实际可用，断言绕过
-      AI_CONFIG.model as unknown as Parameters<typeof AI.run>[0],
+      AI_CONFIG.model,
       {
         messages: [
           {
@@ -88,12 +87,17 @@ export async function processExpenseInput(
     const type: 'expense' | 'income' = parsed.type === 'income' ? 'income' : 'expense';
 
     // 日期校验：仅接受 YYYY-MM-DD，且要求输入中确有日期线索（防止小模型幻觉出日期）
-    const date =
-      typeof parsed.date === 'string' &&
-      /^\d{4}-\d{2}-\d{2}$/.test(parsed.date) &&
-      DATE_CLUE_RE.test(input)
-        ? parsed.date
-        : undefined;
+    // AI 漏填 date 但输入确有日期线索时，用正则 extractDate 从原文兜底提取，避免静默记成今天
+    let date: string | undefined;
+    const hasDateClue = DATE_CLUE_RE.test(input);
+    if (typeof parsed.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(parsed.date) && hasDateClue) {
+      date = parsed.date;
+    } else if (!date && hasDateClue) {
+      date = extractDate(input);
+      if (date) {
+        console.warn('[parse-expense] AI omitted date, recovered from input via extractDate:', input, '->', date);
+      }
+    }
 
     return {
       amount: Number(parsed.amount),
