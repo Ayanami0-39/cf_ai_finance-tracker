@@ -1,4 +1,5 @@
 import { getExpenseEntryPrompt, SYSTEM_MESSAGE, AI_CONFIG, EXPENSE_CATEGORIES, type ExpenseCategory } from './prompts/expense-entry';
+import { extractAiText, stripThinking } from './extract-ai-text';
 
 export interface ProcessedExpense {
   amount: number;
@@ -42,40 +43,7 @@ export async function processExpenseInput(
       }
     ) as Record<string, unknown>;
 
-    // 兼容多种返回形态：
-    // 1. string：旧版直接返回文本
-    // 2. { response: string }：Workers AI 常规格式
-    // 3. { result: { response: string } }：部分模型包装格式
-    // 4. { choices: [{ message: { content: string } }] }：OpenAI 兼容格式
-    let aiText = '';
-    if (typeof response === 'string') {
-      aiText = response;
-    } else if (typeof response.response === 'string') {
-      aiText = response.response;
-    } else if (
-      typeof response.result === 'object' && response.result !== null &&
-      typeof (response.result as Record<string, unknown>).response === 'string'
-    ) {
-      aiText = (response.result as Record<string, unknown>).response as string;
-    } else if (Array.isArray(response.choices) && response.choices.length > 0) {
-      const first = response.choices[0] as Record<string, unknown>;
-      const message = first.message as Record<string, unknown> | undefined;
-      if (message && typeof message.content === 'string') {
-        aiText = message.content;
-      }
-    } else if (Array.isArray(response.candidates) && response.candidates.length > 0) {
-      const first = response.candidates[0] as Record<string, unknown>;
-      const content = first.content as Record<string, unknown> | undefined;
-      const parts = content?.parts;
-      if (Array.isArray(parts) && parts.length > 0) {
-        const texts = parts
-          .map((p) => (typeof (p as Record<string, unknown>).text === 'string' ? ((p as Record<string, unknown>).text as string) : ''))
-          .filter(Boolean);
-        if (texts.length > 0) {
-          aiText = texts.join('');
-        }
-      }
-    }
+    const aiText = stripThinking(extractAiText(response));
 
     if (!aiText) {
       console.error('[parse-expense] AI returned empty output, fallback to regex. input:', input, 'rawResponse:', JSON.stringify(response).slice(0, 500));

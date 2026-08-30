@@ -1,4 +1,5 @@
 import type { Expense } from "../types/expense";
+import { GLM_MODEL, GLM_THINKING_OFF, extractAiText, stripThinking } from './extract-ai-text';
 import { getDeletePrompt, DELETE_SYSTEM_MESSAGE, DELETE_CONFIG } from './prompts/delete-expense';
 
 export interface DeleteResult {
@@ -31,23 +32,19 @@ export async function identifyExpenseToDelete(
     const prompt = getDeletePrompt(userInput, expenses);
 
     const response = await AI.run(
-      '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
+      GLM_MODEL as unknown as Parameters<typeof AI.run>[0],
       {
         messages: [
           { role: 'system', content: DELETE_SYSTEM_MESSAGE },
           { role: 'user', content: prompt }
         ],
         temperature: DELETE_CONFIG.temperature,
-        max_tokens: DELETE_CONFIG.max_tokens
+        max_tokens: DELETE_CONFIG.max_tokens,
+        ...GLM_THINKING_OFF
       }
-    ) as { response?: string } | string;
+    ) as unknown;
 
-    let text = '';
-    if (typeof response === 'string') {
-      text = response;
-    } else if (response.response) {
-      text = response.response;
-    }
+    const text = stripThinking(extractAiText(response));
 
     const jsonMatch = text.match(/\{[\s\S]*?\}/);
     if (jsonMatch) {

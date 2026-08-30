@@ -1,3 +1,4 @@
+import { GLM_MODEL, GLM_THINKING_OFF, extractAiText, stripThinking } from './extract-ai-text';
 import { getQueryPrompt, QUERY_SYSTEM_MESSAGE, QUERY_CONFIG } from './prompts/query-expenses';
 import type { Expense } from '../types/expense';
 
@@ -19,23 +20,19 @@ export async function queryExpenses(
     const prompt = getQueryPrompt(question, expenses);
 
     const response = await AI.run(
-      '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
+      GLM_MODEL as unknown as Parameters<typeof AI.run>[0],
       {
         messages: [
           { role: 'system', content: QUERY_SYSTEM_MESSAGE },
           { role: 'user', content: prompt }
         ],
         temperature: QUERY_CONFIG.temperature,
-        max_tokens: QUERY_CONFIG.max_tokens
+        max_tokens: QUERY_CONFIG.max_tokens,
+        ...GLM_THINKING_OFF
       }
-    ) as { response?: string } | string;
+    ) as unknown;
 
-    let text = '';
-    if (typeof response === 'string') {
-      text = response;
-    } else if (response.response) {
-      text = response.response;
-    }
+    const text = stripThinking(extractAiText(response));
 
     if (text) {
       return text.trim();

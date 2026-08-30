@@ -1,3 +1,4 @@
+import { GLM_MODEL, GLM_THINKING_OFF, extractAiText, stripThinking } from './extract-ai-text';
 import { getIntentPrompt, INTENT_SYSTEM_MESSAGE, INTENT_CONFIG, INTENTS, type Intent } from './prompts/intent-classification';
 
 export async function classifyIntent(
@@ -13,23 +14,19 @@ export async function classifyIntent(
     const prompt = getIntentPrompt(input);
 
     const response = await AI.run(
-      '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
+      GLM_MODEL as unknown as Parameters<typeof AI.run>[0],
       {
         messages: [
           { role: 'system', content: INTENT_SYSTEM_MESSAGE },
           { role: 'user', content: prompt }
         ],
         temperature: INTENT_CONFIG.temperature,
-        max_tokens: INTENT_CONFIG.max_tokens
+        max_tokens: INTENT_CONFIG.max_tokens,
+        ...GLM_THINKING_OFF
       }
-    ) as { response?: string } | string;
+    ) as unknown;
 
-    let text = '';
-    if (typeof response === 'string') {
-      text = response;
-    } else if (response.response) {
-      text = response.response;
-    }
+    const text = stripThinking(extractAiText(response));
 
     // Ensure text is a string before calling .match()
     if (!text || typeof text !== 'string') {
