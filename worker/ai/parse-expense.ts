@@ -171,25 +171,31 @@ const DATE_CLUE_RE =
 
 /** 从 AI 输出中稳健提取 JSON：兼容 markdown 代码块、前后缀文字、嵌套对象、截断输出修复 */
 function extractJson(text: string): Record<string, unknown> | null {
+  // GLM-4.7-Flash 为 reasoning 模型：先剥离 ɛtoken 与含 think 字样的思考段落，
+  // 避免「<}」类思考内容干扰后续的大括号配对扫描
+  let cleaned = text
+    .replace(/ɛ[\s\S]*?ɛ/g, ' ')
+    .replace(/ɛ/g, ' ');
+
   const candidates: string[] = [];
 
   // 剥离 markdown 代码块围栏（```json ... ``` / ``` ... ```）
-  const fence = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+  const fence = cleaned.match(/```(?:json)?\s*([\s\S]*?)```/);
   if (fence?.[1]) candidates.push(fence[1].trim());
 
   // 完整对象：第一个 { 到最后一个 }（前后有说明文字也能取出）
-  const first = text.indexOf('{');
-  const last = text.lastIndexOf('}');
-  if (first !== -1 && last > first) candidates.push(text.slice(first, last + 1));
+  const first = cleaned.indexOf('{');
+  const last = cleaned.lastIndexOf('}');
+  if (first !== -1 && last > first) candidates.push(cleaned.slice(first, last + 1));
 
   // 逐层截取：从每个 { 起，按大括号配对截取，兼容嵌套对象被外层文字干扰的情况
-  let pos = text.indexOf('{');
+  let pos = cleaned.indexOf('{');
   while (pos !== -1) {
     let depth = 0;
     let inString = false;
     let escaped = false;
-    for (let i = pos; i < text.length; i++) {
-      const ch = text[i];
+    for (let i = pos; i < cleaned.length; i++) {
+      const ch = cleaned[i];
       if (escaped) { escaped = false; continue; }
       if (ch === '\\') { escaped = true; continue; }
       if (ch === '"') inString = !inString;
@@ -207,9 +213,9 @@ function extractJson(text: string): Record<string, unknown> | null {
   }
 
   // 截断修复：JSON 被 max_tokens 截断时缺右括号/引号，尝试补全
-  const truncStart = text.indexOf('{');
-  if (truncStart !== -1 && truncStart < text.length - 1) {
-    let t = text.slice(truncStart).trim();
+  const truncStart = cleaned.indexOf('{');
+  if (truncStart !== -1 && truncStart < cleaned.length - 1) {
+    let t = cleaned.slice(truncStart).trim();
     // 去掉残缺的尾部（未闭合的键名前缀、悬空逗号）
     t = t.replace(/,\s*"[^"]*"?\s*:?\s*$/, '').replace(/,\s*$/, '');
     if (!t.endsWith('}')) {

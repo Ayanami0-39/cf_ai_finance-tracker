@@ -30,6 +30,13 @@
 			}
 		]
 	},
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "finance-tracker-db",
+			"database_id": "ddede735-a6b9-4666-8fb8-efda1461fffc"
+		}
+	],
 	"migrations": [
 		{
 			"tag": "v1",

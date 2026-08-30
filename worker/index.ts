@@ -15,6 +15,36 @@ import {
   authNotConfiguredResponse,
   loginPageResponse,
 } from './auth';
+import {
+  d1GetExpenses,
+  d1AddExpense,
+  d1DeleteExpense,
+  d1UpdateExpense,
+  d1ImportExpenses,
+  d1ClearExpenses,
+} from './db/expenses';
+
+/**
+ * 读取某 scope 的交易记录（D1 为主存储）。
+ * 首次读取且 D1 为空时，从旧 DO 存储按 id 去重搬迁到 D1（幂等：搬迁后再查 D1），
+ * 实现「零手工操作」的历史数据迁移；旧 DO 数据保留不删，作为冷备份。
+ */
+async function getExpensesWithMigration(env: Env, scope: string): Promise<Expense[]> {
+  const d1Expenses = await d1GetExpenses(env.DB, scope);
+  if (d1Expenses.length > 0) return d1Expenses;
+
+  try {
+    const legacyStub = env.FINANCE_MEMORY.get(env.FINANCE_MEMORY.idFromName(scope));
+    const legacy = await legacyStub.getExpenses();
+    if (legacy.length > 0) {
+      await d1ImportExpenses(env.DB, scope, legacy);
+      return await d1GetExpenses(env.DB, scope);
+    }
+  } catch (e) {
+    console.error(`[migration] legacy DO read failed for ${scope}:`, e);
+  }
+  return d1Expenses;
+}
 
 export { FinanceMemory };
 export { UserRegistry } from './durable-objects/UserRegistry';
@@ -23,6 +53,7 @@ interface Env {
   AI: Ai;
   FINANCE_MEMORY: DurableObjectNamespace<FinanceMemory>;
   USER_REGISTRY: DurableObjectNamespace<UserRegistry>;
+  DB: D1Database;
   AUTH_PASSWORD?: string;
   ASSETS: Fetcher;
 }
@@ -110,23 +141,7 @@ app.post('/api/expense-natural', async (c) => {
     };
 
     try {
-      const id = c.env.FINANCE_MEMORY.idFromName(userId);
-      const stub = c.env.FINANCE_MEMORY.get(id);
-
-      // Retry logic for Durable Object connection issues in dev mode
-      let retries = 3;
-      while (retries > 0) {
-        try {
-          await stub.addExpense(expense);
-          break;
-        } catch (err: any) {
-          retries--;
-          if (retries === 0 || !err.retryable) {
-            throw err;
-          }
-          await new Promise(resolve => setTimeout(resolve, 100));
-        }
-      }
+      await d1AddExpense(c.env.DB, userId, expense);
 
       return c.json({
         success: true,
@@ -182,23 +197,9 @@ app.post('/api/expenses', async (c) => {
       byId: body.memberId || undefined
     };
 
-    const id = c.env.FINANCE_MEMORY.idFromName(body.userId);
-    const stub = c.env.FINANCE_MEMORY.get(id);
-
-    // Retry logic for Durable Object connection issues
-    let retries = 3;
-    while (retries > 0) {
-      try {
-        await stub.addExpense(expense);
-        break;
-      } catch (err: any) {
-        retries--;
-        if (retries === 0 || !err.retryable) {
-          throw err;
-        }
-        await new Promise(resolve => setTimeout(resolve, 100));
-      }
-    }
+    const id = crypto.randomUUID();
+    void id;
+    await d1AddExpense(c.env.DB, body.userId, expense);
 
     return c.json({ success: true, expense });
   } catch (err) {
@@ -209,9 +210,7 @@ app.post('/api/expenses', async (c) => {
 app.get('/api/expenses/:userId', async (c) => {
   try {
     const userId = c.req.param('userId');
-    const id = c.env.FINANCE_MEMORY.idFromName(userId);
-    const stub = c.env.FINANCE_MEMORY.get(id);
-    const expenses = await stub.getExpenses();
+    const expenses = await getExpensesWithMigration(c.env, userId);
 
     return c.json({ success: true, expenses, count: expenses.length });
   } catch (err) {
@@ -222,9 +221,7 @@ app.get('/api/expenses/:userId', async (c) => {
 app.delete('/api/expenses/:userId', async (c) => {
   try {
     const userId = c.req.param('userId');
-    const id = c.env.FINANCE_MEMORY.idFromName(userId);
-    const stub = c.env.FINANCE_MEMORY.get(id);
-    await stub.clearExpenses();
+    await d1ClearExpenses(c.env.DB, userId);
     return c.json({ success: true });
   } catch (err) {
     return c.json({ error: String(err) }, 500);
@@ -236,10 +233,8 @@ app.delete('/api/expenses/:userId/:expenseId', async (c) => {
   try {
     const userId = c.req.param('userId');
     const expenseId = c.req.param('expenseId');
-    const id = c.env.FINANCE_MEMORY.idFromName(userId);
-    const stub = c.env.FINANCE_MEMORY.get(id);
 
-    const deleted = await stub.deleteExpense(expenseId);
+    const deleted = await d1DeleteExpense(c.env.DB, userId, expenseId);
     if (!deleted) {
       return c.json({ success: false, error: 'Expense not found' }, 404);
     }
@@ -286,10 +281,7 @@ app.patch('/api/expenses/:userId/:expenseId', async (c) => {
       return c.json({ success: false, error: '没有需要修改的字段' }, 400);
     }
 
-    const id = c.env.FINANCE_MEMORY.idFromName(userId);
-    const stub = c.env.FINANCE_MEMORY.get(id);
-
-    const updated = await stub.updateExpense(expenseId, patch as Partial<Expense>);
+    const updated = await d1UpdateExpense(c.env.DB, userId, expenseId, patch as Partial<Expense>);
     if (!updated) {
       return c.json({ success: false, error: '记录不存在' }, 404);
     }
@@ -406,23 +398,7 @@ app.post('/api/voice-command', async (c) => {
       };
 
       try {
-        const id = c.env.FINANCE_MEMORY.idFromName(userId);
-        const stub = c.env.FINANCE_MEMORY.get(id);
-
-        // Retry logic for Durable Object connection issues in dev mode
-        let retries = 3;
-        while (retries > 0) {
-          try {
-            await stub.addExpense(expense);
-            break;
-          } catch (err: any) {
-            retries--;
-            if (retries === 0 || !err.retryable) {
-              throw err;
-            }
-            await new Promise(resolve => setTimeout(resolve, 100));
-          }
-        }
+        await d1AddExpense(c.env.DB, userId, expense);
 
       // 指定日期记账时在确认语中明示，避免用户误以为记到今天
       const datedMsg =
@@ -448,9 +424,7 @@ app.post('/api/voice-command', async (c) => {
     }
 
     else if (intent === INTENTS.QUERY) {
-      const id = c.env.FINANCE_MEMORY.idFromName(userId);
-      const stub = c.env.FINANCE_MEMORY.get(id);
-      const expenses = await stub.getExpenses();
+      const expenses = await getExpensesWithMigration(c.env, userId);
 
       const answer = await queryExpenses(c.env.AI, input, expenses);
 
@@ -469,9 +443,7 @@ app.post('/api/voice-command', async (c) => {
     }
 
     else if (intent === INTENTS.DELETE_EXPENSE) {
-      const id = c.env.FINANCE_MEMORY.idFromName(userId);
-      const stub = c.env.FINANCE_MEMORY.get(id);
-      const expenses = await stub.getExpenses();
+      const expenses = await getExpensesWithMigration(c.env, userId);
 
       const deleteResult = await identifyExpenseToDelete(c.env.AI, input, expenses);
 
@@ -486,7 +458,7 @@ app.post('/api/voice-command', async (c) => {
       if (deleteResult.isBulkDelete && deleteResult.expenseIds) {
         let deletedCount = 0;
         for (const expenseId of deleteResult.expenseIds) {
-          const deleted = await stub.deleteExpense(expenseId);
+          const deleted = await d1DeleteExpense(c.env.DB, userId, expenseId);
           if (deleted) deletedCount++;
         }
 
@@ -499,7 +471,7 @@ app.post('/api/voice-command', async (c) => {
       }
 
       // Single delete
-      const deleted = await stub.deleteExpense(deleteResult.expenseId!);
+      const deleted = await d1DeleteExpense(c.env.DB, userId, deleteResult.expenseId!);
 
       if (deleted) {
         return c.json({
@@ -698,10 +670,12 @@ async function mergeScopes(
     env.FINANCE_MEMORY.idFromName(targetScopeId)
   );
   const [expenses, chat] = await Promise.all([
-    sourceStub.getExpenses(),
+    d1GetExpenses(env.DB, sourceScopeId),
     sourceStub.getChatMessages(),
   ]);
-  const importedExpenses = expenses.length ? await targetStub.importExpenses(expenses) : 0;
+  const importedExpenses = expenses.length
+    ? await d1ImportExpenses(env.DB, targetScopeId, expenses)
+    : 0;
   const importedChat = chat.length ? await targetStub.importChatMessages(chat) : 0;
   return { importedExpenses, importedChat };
 }
@@ -721,15 +695,15 @@ app.post('/api/identity/merge', async (c) => {
     const targetId = c.env.FINANCE_MEMORY.idFromName(targetScopeId);
     const targetStub = c.env.FINANCE_MEMORY.get(targetId);
 
-    // 读取源作用域的全部数据
+    // 读取源作用域的全部数据（交易记录在 D1，聊天记录在 DO）
     const [expenses, chat] = await Promise.all([
-      sourceStub.getExpenses(),
+      d1GetExpenses(c.env.DB, sourceScopeId),
       sourceStub.getChatMessages(),
     ]);
 
     // 合并（按 id 去重）到目标作用域
     const importedExpenses = expenses.length
-      ? await targetStub.importExpenses(expenses)
+      ? await d1ImportExpenses(c.env.DB, targetScopeId, expenses)
       : 0;
     const importedChat = chat.length
       ? await targetStub.importChatMessages(chat)
