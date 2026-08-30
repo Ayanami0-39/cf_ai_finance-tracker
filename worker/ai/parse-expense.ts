@@ -105,7 +105,8 @@ export async function processExpenseInput(
       category,
       type,
       date,
-      message: typeof parsed.message === 'string' ? parsed.message : 'OK',
+      // 确认文案由本地模板生成：8B 小模型中文生成不稳定（曾出现乱码），不再采用 AI 文案
+      message: buildTemplateMessage(Number(parsed.amount), merchant, type, date),
       success: true,
       parsedBy: 'ai'
     };
@@ -114,6 +115,43 @@ export async function processExpenseInput(
     console.error('[parse-expense] AI call failed, fallback to regex. input:', input, 'error:', error instanceof Error ? error.message : error);
     return fallbackParsing(input);
   }
+}
+
+/**
+ * 本地模板生成确认文案（替代 AI 生成文案）：
+ * 8B 级小模型中文生成不稳定，曾出现「很期 11.8 元币存计。」类乱码；
+ * 确认语本质是固定信息（金额/商家/日期），模板生成 100% 可靠。
+ */
+function buildTemplateMessage(
+  amount: number,
+  merchant: string,
+  type: 'expense' | 'income',
+  date?: string
+): string {
+  const today = new Date().toISOString().split('T')[0];
+  let prefix = '';
+  if (date && date !== today) {
+    const [, m, d] = date.split('-');
+    prefix = `${Number(m)}月${Number(d)}日 `;
+  }
+
+  // 金额显示：整数不带小数，小数最多两位
+  const amt = Number(amount.toFixed(2)).toString();
+  const amtText = type === 'income' ? `+¥${amt}` : `¥${amt}`;
+
+  const templates = type === 'income'
+    ? [
+        `已入账：${prefix}${merchant} ${amtText}`,
+        `${prefix}${merchant} ${amtText} 到账，记好啦`,
+        `收到，${prefix}${merchant} ${amtText} 已入账`
+      ]
+    : [
+        `已记录：${prefix}${merchant} ${amtText}`,
+        `${prefix}${merchant} ${amtText} 记好啦`,
+        `收到，${prefix}${merchant} ${amtText} 已记下`
+      ];
+
+  return templates[Math.floor(Math.random() * templates.length)];
 }
 
 // 输入中出现任一日期线索（用于抑制 AI 幻觉日期：没有日期词就不该有 date 字段）
@@ -187,7 +225,8 @@ function extractJson(text: string): Record<string, unknown> | null {
 
 /** 校验提取结果是否为有效的记账对象（字段类型 + 类目白名单），防小模型幻觉字段 */
 function isValidExpenseJson(parsed: Record<string, unknown>): boolean {
-  if (!parsed.amount || typeof parsed.category !== 'string' || typeof parsed.message !== 'string') {
+  // message 已改为本地模板生成，AI 只需返回结构化字段
+  if (!parsed.amount || typeof parsed.category !== 'string') {
     return false;
   }
   const category = parsed.category;
@@ -350,17 +389,16 @@ function fallbackParsing(input: string): ProcessedExpense {
     }
   }
 
-  const amountText = category === 'Income' ? `+¥${amount.toFixed(2)}` : `¥${amount.toFixed(2)}`;
+  const type: 'expense' | 'income' = isIncome ? 'income' : 'expense';
+  const date = extractDate(input);
   return {
     amount,
     merchant,
     category,
-    type: isIncome ? 'income' : 'expense',
-    date: extractDate(input),
+    type,
+    date,
     message: amount > 0
-      ? (isIncome
-        ? `记录收入 ${amountText}（${merchant}）。`
-        : `已记录 ${amountText}（${merchant} · ${category}）。`)
+      ? buildTemplateMessage(amount, merchant, type, date)
       : '请告诉我具体金额。',
     success: amount > 0,
     parsedBy: 'fallback'
