@@ -7,6 +7,7 @@
  */
 
 import { getMembers, getActiveMemberId } from "./family";
+import { api } from "./api";
 
 const FAMILY_KEY = "finance_tracker_family"; // { code, scopeId }
 
@@ -45,4 +46,21 @@ export function getScopeId(): string {
 /** 当前是否处于家庭共享模式 */
 export function isFamilyMode(): boolean {
   return getFamilyBinding() !== null;
+}
+
+/** 校验本机是否仍在已绑定的家庭中；已被移出时自动解除绑定（退回个人模式） */
+export async function verifyFamilyMembership(): Promise<boolean> {
+  const family = getFamilyBinding();
+  if (!family) return true;
+  try {
+    const res = await api.getFamilyMembers(family.scopeId);
+    if (!res.success) return true; // 查询失败时不误清本地绑定
+    const members = getMembers();
+    const activeId = getActiveMemberId(members);
+    if (res.members.some((m) => m.id === activeId)) return true;
+    clearFamilyBinding();
+    return false;
+  } catch {
+    return true;
+  }
 }

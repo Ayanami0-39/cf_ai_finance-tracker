@@ -63,6 +63,28 @@ export class FinanceMemory extends DurableObject<Env> {
     await this.ctx.storage.put('familyMembers', members);
   }
 
+  async getFamilyOwnerId(): Promise<string | null> {
+    return (await this.ctx.storage.get<string>('familyOwnerId')) || null;
+  }
+
+  async setFamilyOwnerId(ownerId: string): Promise<void> {
+    await this.ctx.storage.put('familyOwnerId', ownerId);
+  }
+
+  async removeFamilyMember(
+    memberId: string
+  ): Promise<Array<{ id: string; name: string; emoji: string }>> {
+    const members =
+      (await this.ctx.storage.get<
+        Array<{ id: string; name: string; emoji: string }>
+      >('familyMembers')) || [];
+    const next = members.filter((m) => m.id !== memberId);
+    if (next.length !== members.length) {
+      await this.ctx.storage.put('familyMembers', next);
+    }
+    return next;
+  }
+
   // ---- Bulk import（加入家庭时迁移本机历史数据） ----
 
   async importExpenses(list: Expense[]): Promise<number> {

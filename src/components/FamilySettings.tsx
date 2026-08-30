@@ -8,7 +8,7 @@ import {
   getScopeId,
 } from "@/lib/scope";
 import { api } from "@/lib/api";
-import { Users, Copy, Check, LogOut, Loader2 } from "lucide-react";
+import { Users, Copy, Check, LogOut, Loader2, UserMinus, X } from "lucide-react";
 
 interface FamilySettingsProps {
   onScopeChange: () => void;
@@ -22,6 +22,8 @@ export function FamilySettings({ onScopeChange }: FamilySettingsProps) {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [removingId, setRemovingId] = useState<string | null>(null);
+  const [ownerId, setOwnerId] = useState<string | null | undefined>(undefined);
 
   const localMembers = getMembers();
   const activeId = getActiveMemberId(localMembers);
@@ -32,6 +34,7 @@ export function FamilySettings({ onScopeChange }: FamilySettingsProps) {
       const res = await api.getFamilyMembers(scopeId);
       if (res.success) {
         setRemoteMembers(res.members as FamilyMember[]);
+        setOwnerId(res.ownerId ?? null);
         // 服务端注册表合并回本地成员列表，标记为家庭成员
         const local = getMembers();
         const merged = [...local];
@@ -129,6 +132,7 @@ export function FamilySettings({ onScopeChange }: FamilySettingsProps) {
       setFamilyBinding({ code: res.code || code, scopeId: res.scopeId });
       setBinding({ code: res.code || code, scopeId: res.scopeId });
       setInFamily(true);
+      refreshRemoteMembers(res.scopeId);
       setMsg(
         `已加入家庭！本机 ${res.importedExpenses ?? 0} 笔账单、${res.importedChat ?? 0} 条聊天记录已同步到家庭。`
       );
@@ -159,6 +163,31 @@ export function FamilySettings({ onScopeChange }: FamilySettingsProps) {
       setTimeout(() => setCopied(false), 1500);
     } catch {
       // 剪贴板不可用时静默
+    }
+  };
+
+  // 仅家庭创建者可移除其他成员（服务端二次校验）
+  const isOwner = !!binding && ownerId != null && active?.id === ownerId;
+
+  const removeMember = async (memberId: string) => {
+    if (!binding || !active) return;
+    setBusy(true);
+    try {
+      const res = await api.removeFamilyMember(binding.scopeId, memberId, active.id);
+      if (!res.success) {
+        setMsg(res.error || "移除失败，请重试");
+        return;
+      }
+      // 清理本地成员列表中被移除者，避免残留
+      const next = getMembers().filter((m) => m.id !== memberId);
+      saveMembers(next);
+      setRemoteMembers(res.members || []);
+      setRemovingId(null);
+      setMsg("已将成员移出家庭，其设备将退回个人记账模式。");
+    } catch {
+      setMsg("移除失败，请检查网络后重试");
+    } finally {
+      setBusy(false);
     }
   };
 
@@ -252,6 +281,40 @@ export function FamilySettings({ onScopeChange }: FamilySettingsProps) {
                   <span className="text-[9px] px-1.5 py-0.5 rounded-full flex-shrink-0 bg-muted text-muted-foreground">
                     {m.id === active?.id ? "本人" : "家庭"}
                   </span>
+                  {isOwner && m.id !== active?.id && (
+                    removingId === m.id ? (
+                      <div className="flex items-center gap-1 flex-shrink-0">
+                        <span className="text-[10px] text-muted-foreground">移出？</span>
+                        <button
+                          type="button"
+                          aria-label="确认移出"
+                          onClick={() => removeMember(m.id)}
+                          disabled={busy}
+                          className="w-6 h-6 rounded-md bg-destructive text-white flex items-center justify-center hover:bg-destructive/90 active:scale-95 transition-all"
+                        >
+                          <Check className="w-3 h-3" />
+                        </button>
+                        <button
+                          type="button"
+                          aria-label="取消移出"
+                          onClick={() => setRemovingId(null)}
+                          className="w-6 h-6 rounded-md bg-muted text-muted-foreground flex items-center justify-center hover:bg-muted/80 active:scale-95 transition-all"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        aria-label={`移出成员 ${m.name}`}
+                        onClick={() => setRemovingId(m.id)}
+                        disabled={busy}
+                        className="w-6 h-6 rounded-md text-muted-foreground/50 hover:text-destructive hover:bg-destructive/10 flex items-center justify-center flex-shrink-0 transition-colors"
+                      >
+                        <UserMinus className="w-3.5 h-3.5" />
+                      </button>
+                    )
+                  )}
                 </div>
               ))}
             </div>

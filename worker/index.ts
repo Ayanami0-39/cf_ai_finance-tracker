@@ -495,6 +495,8 @@ app.post('/api/family/create', async (c) => {
 
     // 写入家庭成员注册表（服务端共享）
     await stub.setFamilyMembers(members);
+    // 记录家庭创建者，作为移除成员的权限校验依据
+    await stub.setFamilyOwnerId(userId);
 
     // 迁移本机既有数据
     let importedExpenses = 0;
@@ -583,7 +585,8 @@ app.get('/api/family/:scopeId/members', async (c) => {
     const id = c.env.FINANCE_MEMORY.idFromName(param.scopeId);
     const stub = c.env.FINANCE_MEMORY.get(id);
     const members = await stub.getFamilyMembers();
-    return c.json({ success: true, members });
+    const ownerId = await stub.getFamilyOwnerId();
+    return c.json({ success: true, members, ownerId });
   } catch (err) {
     return c.json({ success: false, error: String(err) }, 500);
   }
@@ -614,6 +617,42 @@ app.post('/api/family/:scopeId/members', async (c) => {
     await stub.setFamilyMembers(merged);
 
     return c.json({ success: true, members: merged });
+  } catch (err) {
+    return c.json({ success: false, error: String(err) }, 500);
+  }
+});
+
+// Remove a member from the family registry（仅家庭创建者可操作）
+app.delete('/api/family/:scopeId/members/:memberId', async (c) => {
+  try {
+    const { scopeId, memberId } = c.req.param();
+    const { operatorId } = await c.req.json().catch(() => ({ operatorId: '' }));
+
+    if (!operatorId) {
+      return c.json({ success: false, error: 'operatorId required' }, 400);
+    }
+
+    const id = c.env.FINANCE_MEMORY.idFromName(scopeId);
+    const stub = c.env.FINANCE_MEMORY.get(id);
+
+    const ownerId = await stub.getFamilyOwnerId();
+    if (ownerId) {
+      if (operatorId !== ownerId) {
+        return c.json({ success: false, error: '只有家庭创建者可以移除成员' }, 403);
+      }
+    } else {
+      // 旧家庭未记录创建者：允许任一在册成员移除
+      const current = await stub.getFamilyMembers();
+      if (!current.some((m) => m.id === operatorId)) {
+        return c.json({ success: false, error: '只有家庭成员可以移除成员' }, 403);
+      }
+    }
+    if (memberId === operatorId) {
+      return c.json({ success: false, error: '不能移除自己，请使用退出家庭' }, 400);
+    }
+
+    const members = await stub.removeFamilyMember(memberId);
+    return c.json({ success: true, members });
   } catch (err) {
     return c.json({ success: false, error: String(err) }, 500);
   }

@@ -9,7 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { MessageCircle, ReceiptText, BarChart3 } from "lucide-react";
 import { api } from "./lib/api";
 import { getMembers, getActiveMemberId, setActiveMemberId } from "./lib/family";
-import { getScopeId } from "./lib/scope";
+import { getScopeId, verifyFamilyMembership } from "./lib/scope";
 import { getUserId } from "./lib/user";
 import type { Message, Expense } from "./types";
 import "./App.css";
@@ -29,6 +29,16 @@ function App() {
     setUserId(id);
     loadExpenses(getScopeId());
     loadChatHistory(getScopeId());
+
+    // 异步校验家庭资格：被移出家庭的设备自动退回个人模式
+    verifyFamilyMembership().then((stillInFamily) => {
+      if (!stillInFamily) {
+        setExpenses([]);
+        setMessages([]);
+        loadExpenses(getScopeId());
+        loadChatHistory(getScopeId());
+      }
+    });
   }, []);
 
   const handleMemberChange = (id: string) => {

@@ -119,7 +119,10 @@ export function MemberSwitcher({
       {/* Trigger */}
       <button
         type="button"
-        onClick={() => setOpen((v) => !v)}
+        onClick={() => {
+          setMembers(getMembers()); // 重新读取本地成员（家庭变动后保持同步）
+          setOpen((v) => !v);
+        }}
         className="flex items-center gap-2 h-9 pl-1.5 pr-2.5 rounded-full border bg-card hover:bg-muted transition-colors"
         aria-label="切换家庭成员"
       >

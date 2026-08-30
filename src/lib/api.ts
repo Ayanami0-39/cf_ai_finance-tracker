@@ -171,6 +171,7 @@ export const api = {
   async getFamilyMembers(scopeId: string): Promise<{
     success: boolean;
     members: Array<{ id: string; name: string; emoji: string }>;
+    ownerId?: string | null;
   }> {
     const response = await fetch(`${API_BASE}/family/${scopeId}/members`, {
       headers: authHeaders(),
@@ -178,6 +179,23 @@ export const api = {
     if (!response.ok) {
       throw new Error('Failed to fetch family members');
     }
+    return response.json();
+  },
+
+  async removeFamilyMember(
+    scopeId: string,
+    memberId: string,
+    operatorId: string
+  ): Promise<{
+    success: boolean;
+    members?: Array<{ id: string; name: string; emoji: string }>;
+    error?: string;
+  }> {
+    const response = await fetch(`${API_BASE}/family/${scopeId}/members/${memberId}`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify({ operatorId }),
+    });
     return response.json();
   },
 
