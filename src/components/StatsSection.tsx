@@ -391,7 +391,7 @@ export function StatsSection({ expenses }: StatsSectionProps) {
           >
             {/* Overview cards */}
             <motion.div
-              className="grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-3"
+              className="grid grid-cols-2 gap-2 md:gap-3"
               variants={cardVariants}
             >
               <StatCard
@@ -467,7 +467,7 @@ export function StatsSection({ expenses }: StatsSectionProps) {
                   本期没有支出记录
                 </p>
               ) : (
-                <div className="flex flex-col md:flex-row items-center gap-4 md:gap-6">
+                <div className="flex flex-col items-center gap-4">
                   <div className="flex-shrink-0">
                     <PieChart
                       slices={slices}
@@ -497,7 +497,7 @@ export function StatsSection({ expenses }: StatsSectionProps) {
                             className="w-2.5 h-2.5 rounded-sm flex-shrink-0"
                             style={{ background: PALETTE[i % PALETTE.length] }}
                           />
-                          <span className="text-xs text-foreground flex-1 truncate text-left">
+                          <span className="text-xs text-foreground flex-1 min-w-0 truncate text-left">
                             {s.name}
                           </span>
                           {/* 分类环比箭头：与上月/上周同分类对比 */}
@@ -522,10 +522,10 @@ export function StatsSection({ expenses }: StatsSectionProps) {
                               {Math.abs(cm.rate * 100).toFixed(0)}%
                             </span>
                           )}
-                          <span className="text-xs text-muted-foreground tabular-nums">
-                            ¥{s.value.toFixed(2)}
+                          <span className="text-xs text-muted-foreground tabular-nums whitespace-nowrap flex-shrink-0">
+                            ¥{s.value >= 1000 ? s.value.toFixed(0) : s.value.toFixed(2)}
                           </span>
-                          <span className="text-xs text-muted-foreground/70 tabular-nums w-11 text-right">
+                          <span className="text-xs text-muted-foreground/70 tabular-nums w-12 text-right flex-shrink-0">
                             {(s.ratio * 100).toFixed(1)}%
                           </span>
                         </button>
@@ -545,7 +545,7 @@ export function StatsSection({ expenses }: StatsSectionProps) {
 
             {/* Top 商户 + 收入来源（周/月通用） */}
             <motion.div
-              className="grid grid-cols-1 md:grid-cols-2 gap-2 md:gap-3"
+              className="grid grid-cols-1 gap-2 md:gap-3"
               variants={cardVariants}
             >
               <TopMerchantsCard merchants={topMerchants} total={agg.expense} />
@@ -740,7 +740,7 @@ function StatCard({
         <span className="text-xs text-muted-foreground">{label}</span>
       </div>
       <p
-        className={`text-base md:text-xl font-semibold ${
+        className={`text-base md:text-lg font-semibold truncate ${
           tone === "expense"
             ? "text-destructive"
             : tone === "income"
@@ -748,7 +748,7 @@ function StatCard({
               : "text-foreground"
         }`}
       >
-        <AnimatedNumber value={value} decimals={decimals} />
+        <AnimatedNumber value={value} decimals={Math.abs(value) >= 1000 ? 0 : decimals} />
       </p>
     </div>
   );
@@ -836,7 +836,7 @@ function TopMerchantsCard({
             <span className="w-4 text-[10px] text-muted-foreground tabular-nums text-right flex-shrink-0">
               {i + 1}
             </span>
-            <span className="text-xs text-foreground w-16 md:w-20 truncate flex-shrink-0">
+            <span className="text-xs text-foreground min-w-0 w-20 truncate flex-shrink-0">
               {name}
             </span>
             <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
@@ -847,8 +847,8 @@ function TopMerchantsCard({
                 transition={{ duration: 0.5, ease: "easeOut" }}
               />
             </div>
-            <span className="text-[11px] text-muted-foreground tabular-nums w-14 text-right flex-shrink-0">
-              ¥{value.toFixed(0)}
+            <span className="text-[11px] text-muted-foreground tabular-nums text-right flex-shrink-0 whitespace-nowrap">
+              <span className="text-foreground">¥{value.toFixed(0)}</span>
               {total > 0 && (
                 <span className="text-muted-foreground/60"> · {((value / total) * 100).toFixed(0)}%</span>
               )}
@@ -881,11 +881,12 @@ function IncomeSourcesCard({
       ) : (
         <div className="space-y-2">
           <p className="text-[11px] text-muted-foreground">
-            本期收入共 ¥{total.toFixed(2)}，来自 {sources.length} 个来源
+            本期收入共 ¥{total >= 1000 ? total.toFixed(0) : total.toFixed(2)}，来自{" "}
+            {sources.length} 个来源
           </p>
           {sources.map((s) => (
             <div key={s.name} className="flex items-center gap-2">
-              <span className="text-xs text-foreground w-16 md:w-20 truncate flex-shrink-0">
+              <span className="text-xs text-foreground min-w-0 w-20 truncate flex-shrink-0">
                 {s.name}
               </span>
               <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
@@ -896,8 +897,9 @@ function IncomeSourcesCard({
                   transition={{ duration: 0.5, ease: "easeOut" }}
                 />
               </div>
-              <span className="text-[11px] text-muted-foreground tabular-nums w-14 text-right flex-shrink-0">
-                ¥{s.value.toFixed(0)} · {(s.ratio * 100).toFixed(0)}%
+              <span className="text-[11px] text-muted-foreground tabular-nums text-right flex-shrink-0 whitespace-nowrap">
+                <span className="text-foreground">¥{s.value >= 1000 ? s.value.toFixed(0) : s.value.toFixed(0)}</span>
+                <span className="text-muted-foreground/60"> · {(s.ratio * 100).toFixed(0)}%</span>
               </span>
             </div>
           ))}

@@ -245,10 +245,10 @@ export function ExpensesSection({
               <div key={g.key}>
                 {/* 月份小节标题：月份 + 该组收支小计 */}
                 <div className="flex items-center justify-between px-1 py-1.5 sticky top-0 bg-background/95 backdrop-blur-sm z-10 -mx-1 px-3">
-                  <h3 className="text-xs font-semibold text-foreground">
+                  <h3 className="text-xs font-semibold text-foreground min-w-0 truncate">
                     {g.label}
                   </h3>
-                  <span className="text-[11px] text-muted-foreground tabular-nums">
+                  <span className="text-[11px] text-muted-foreground tabular-nums flex-shrink-0 whitespace-nowrap">
                     支出 ¥{g.expense.toFixed(0)}
                     {g.income > 0 && ` · 收入 ¥${g.income.toFixed(0)}`}
                   </span>

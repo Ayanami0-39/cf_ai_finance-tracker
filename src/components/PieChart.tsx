@@ -76,6 +76,10 @@ export function PieChart({ slices, size = 180, selected = null, onSelect }: PieC
 
   const active = selected ? slices.find((s) => s.name === selected) : undefined;
 
+  // 中心文字较长时缩小字号，避免溢出圆环内径
+  const totalStr = `¥${Math.round(total)}`;
+  const activeStr = active ? `¥${active.value.toFixed(0)}` : "";
+
   return (
     <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
       {arcs.map((a, i) => {
@@ -125,9 +129,9 @@ export function PieChart({ slices, size = 180, selected = null, onSelect }: PieC
               y={cy + 3}
               textAnchor="middle"
               className="fill-foreground font-semibold"
-              style={{ fontSize: size * 0.095 }}
+              style={{ fontSize: size * (activeStr.length > 6 ? 0.075 : 0.095) }}
             >
-              ¥{active.value.toFixed(0)}
+              {activeStr}
             </text>
             <text
               x={cx}
@@ -146,9 +150,9 @@ export function PieChart({ slices, size = 180, selected = null, onSelect }: PieC
               y={cy - 4}
               textAnchor="middle"
               className="fill-foreground font-semibold"
-              style={{ fontSize: size * 0.11 }}
+              style={{ fontSize: size * (totalStr.length > 6 ? 0.085 : 0.11) }}
             >
-              ¥{total.toFixed(0)}
+              {totalStr}
             </text>
             <text
               x={cx}

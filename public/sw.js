@@ -2,7 +2,7 @@
  * Fiscus Service Worker：静态资源缓存 + 离线兜壳。
  * 策略：API 请求不缓存；页面导航 network-first；其余同源 GET 资源 stale-while-revalidate。
  */
-const CACHE_NAME = 'fiscus-cache-v1';
+const CACHE_NAME = 'fiscus-cache-v2';
 const PRECACHE_URLS = ['/', '/manifest.webmanifest', '/icon.png'];
 
 self.addEventListener('install', (event) => {
