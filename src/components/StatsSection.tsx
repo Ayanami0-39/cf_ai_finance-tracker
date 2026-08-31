@@ -504,6 +504,19 @@ function ChangeCard({
   );
 }
 
+const fmtY = (v: number) =>
+  v >= 1000 ? `${(v / 1000).toFixed(v % 1000 === 0 ? 0 : 1)}k` : `${v}`;
+
+/** 将最大值向上取整到「好看」的刻度（1/2/2.5/5 × 10^n） */
+function niceMax(max: number): number {
+  if (max <= 0) return 1;
+  const pow = Math.pow(10, Math.floor(Math.log10(max)));
+  for (const m of [1, 2, 2.5, 5, 10]) {
+    if (m * pow >= max) return m * pow;
+  }
+  return 10 * pow;
+}
+
 function TrendBar({
   trend,
   cursor,
@@ -515,58 +528,132 @@ function TrendBar({
   selected: string | null;
   onSelect: (key: string) => void;
 }) {
-  const max = Math.max(
+  const rawMax = Math.max(
     ...trend.map((t) => Math.max(t.agg.expense, t.agg.income)),
     1
   );
+  const scaleMax = niceMax(rawMax);
+  const ticks = [1, 0.75, 0.5, 0.25, 0].map((r) => Math.round(scaleMax * r));
+
+  // 6 个月合计的分类金额降序作为堆叠顺序，保证各月颜色一致
+  const stackOrder = useMemo(() => {
+    const sum: Record<string, number> = {};
+    for (const t of trend)
+      for (const [c, v] of Object.entries(t.agg.byCategory))
+        sum[c] = (sum[c] || 0) + v;
+    return Object.entries(sum)
+      .sort((a, b) => b[1] - a[1])
+      .map(([c]) => c);
+  }, [trend]);
 
   return (
-    <div className="flex items-end justify-between gap-1.5 h-32">
-      {trend.map((t) => {
-        const isCurrent = t.key === cursor;
-        const isSelected = t.key === selected;
-        const mh = (t.agg.expense / max) * 100;
-        const ih = (t.agg.income / max) * 100;
-        const [, m] = t.key.split("-");
-        return (
-          <button
-            type="button"
-            key={t.key}
-            onClick={() => onSelect(t.key)}
-            className="flex-1 flex flex-col items-center gap-1 h-full justify-end rounded-lg outline-none"
+    <div>
+      <div className="relative h-36 pl-9">
+        {/* 纵轴刻度 + 网格线 */}
+        {ticks.map((t) => (
+          <div
+            key={t}
+            className="absolute left-9 right-0 flex items-center"
+            style={{ bottom: `${(t / scaleMax) * 100}%` }}
           >
-            <div className="w-full flex items-end justify-center gap-0.5 flex-1">
-              <motion.div
-                className={`w-2.5 md:w-3 rounded-t bg-destructive/70 ${
-                  isSelected ? "bg-destructive" : ""
-                }`}
-                initial={{ height: 0 }}
-                animate={{ height: `${mh}%` }}
-                transition={{ duration: 0.5, ease: "easeOut" }}
-                style={{ minHeight: t.agg.expense > 0 ? 3 : 0 }}
-              />
-              <motion.div
-                className={`w-2.5 md:w-3 rounded-t bg-income/60 ${
-                  isSelected ? "bg-income" : ""
-                }`}
-                initial={{ height: 0 }}
-                animate={{ height: `${ih}%` }}
-                transition={{ duration: 0.5, ease: "easeOut", delay: 0.05 }}
-                style={{ minHeight: t.agg.income > 0 ? 3 : 0 }}
-              />
-            </div>
-            <span
-              className={`text-[10px] tabular-nums ${
-                isCurrent || isSelected
-                  ? "text-foreground font-semibold"
-                  : "text-muted-foreground"
-              }`}
-            >
-              {Number(m)}月
+            <span className="absolute -left-9 w-8 text-right text-[9px] text-muted-foreground/80 tabular-nums leading-none">
+              {fmtY(t)}
             </span>
-          </button>
-        );
-      })}
+            <div
+              className={`flex-1 border-t ${
+                t === 0
+                  ? "border-border"
+                  : "border-dashed border-muted-foreground/15"
+              }`}
+            />
+          </div>
+        ))}
+        {/* 柱子区域 */}
+        <div className="absolute left-11 right-0 bottom-0 top-0 flex items-end justify-between gap-1.5">
+          {trend.map((t) => {
+            const isCurrent = t.key === cursor;
+            const isSelected = t.key === selected;
+            const dimmed = selected !== null && !isSelected;
+            const ih = (t.agg.income / scaleMax) * 100;
+            const [, m] = t.key.split("-");
+            const stack = stackOrder.map((c, i) => ({
+              name: c,
+              value: t.agg.byCategory[c] || 0,
+              color: PALETTE[i % PALETTE.length],
+            }));
+            return (
+              <button
+                type="button"
+                key={t.key}
+                onClick={() => onSelect(t.key)}
+                className={`flex-1 flex flex-col items-center gap-1 h-full justify-end rounded-lg outline-none transition-opacity ${
+                  dimmed ? "opacity-40" : "opacity-100"
+                }`}
+              >
+                <div className="w-full flex items-end justify-center gap-0.5 flex-1">
+                  {/* 支出：按分类堆叠的多色柱 */}
+                  <div className="w-2.5 md:w-3 h-full flex flex-col justify-end rounded-t overflow-hidden">
+                    {stack.map((seg) =>
+                      seg.value > 0 ? (
+                        <motion.div
+                          key={seg.name}
+                          className="w-full"
+                          style={{ background: seg.color, minHeight: 2 }}
+                          initial={{ height: 0 }}
+                          animate={{
+                            height: `${(seg.value / scaleMax) * 100}%`,
+                          }}
+                          transition={{ duration: 0.5, ease: "easeOut" }}
+                          title={`${seg.name} ¥${seg.value.toFixed(0)}`}
+                        />
+                      ) : null
+                    )}
+                  </div>
+                  {/* 收入：独立细柱 */}
+                  <motion.div
+                    className={`w-1.5 rounded-t bg-income/60 ${
+                      isSelected ? "bg-income" : ""
+                    }`}
+                    initial={{ height: 0 }}
+                    animate={{ height: `${ih}%` }}
+                    transition={{ duration: 0.5, ease: "easeOut", delay: 0.05 }}
+                    style={{ minHeight: t.agg.income > 0 ? 3 : 0 }}
+                    title={`收入 ¥${t.agg.income.toFixed(0)}`}
+                  />
+                </div>
+                <span
+                  className={`text-[10px] tabular-nums ${
+                    isCurrent || isSelected
+                      ? "text-foreground font-semibold"
+                      : "text-muted-foreground"
+                  }`}
+                >
+                  {Number(m)}月
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+      {/* 图例 */}
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-3 pt-2.5 border-t border-border/50">
+        {stackOrder.map((c, i) => (
+          <span
+            key={c}
+            className="inline-flex items-center gap-1 text-[10px] text-muted-foreground"
+          >
+            <span
+              className="w-2 h-2 rounded-sm"
+              style={{ background: PALETTE[i % PALETTE.length] }}
+            />
+            {c}
+          </span>
+        ))}
+        <span className="inline-flex items-center gap-1 text-[10px] text-muted-foreground">
+          <span className="w-2 h-2 rounded-sm bg-income/70" />
+          收入
+        </span>
+      </div>
     </div>
   );
 }
