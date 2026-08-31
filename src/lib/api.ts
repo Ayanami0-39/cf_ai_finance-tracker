@@ -244,4 +244,54 @@ export const api = {
     });
     return response.json();
   },
+
+  // AI 月报：按月（可选按成员）生成自然语言消费总结
+  async getMonthlyReport(
+    userId: string,
+    month: string,
+    member?: string
+  ): Promise<{ success: boolean; report?: string; error?: string }> {
+    const response = await fetch(`${API_BASE}/report`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify({ userId, month, member: member || 'all' }),
+    });
+    return response.json();
+  },
 };
+
+// ---- CSV 导出：客户端生成，无需后端 ----
+
+/** 把账单列表导出为 CSV 并触发下载（BOM 头保证 Excel 中文不乱码） */
+export function exportExpensesToCsv(expenses: import('@/types').Expense[]): void {
+  const header = ['日期', '类型', '分类', '商家', '描述', '金额', '记录人', '来源'];
+  const escape = (v: string | number | undefined) => {
+    const s = String(v ?? '');
+    return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+  const rows = [...expenses]
+    .sort((a, b) => (a.date < b.date ? 1 : -1))
+    .map((e) =>
+      [
+        e.date,
+        e.type === 'income' ? '收入' : '支出',
+        e.category,
+        e.merchant || '',
+        e.description || '',
+        e.amount.toFixed(2),
+        e.by || '',
+        e.parsedBy === 'fallback' ? '规则' : e.parsedBy === 'ai' ? 'AI' : '',
+      ]
+        .map(escape)
+        .join(',')
+    );
+
+  const csv = '\uFEFF' + [header.join(','), ...rows].join('\r\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `账单导出_${new Date().toISOString().slice(0, 10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}

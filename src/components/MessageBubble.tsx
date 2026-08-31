@@ -1,15 +1,49 @@
 import { useEffect, useState } from "react";
 import type { Message } from "@/types";
 import { accountApi } from "@/lib/account";
-import { Bot, Monitor } from "lucide-react";
+import { Bot, Monitor, RotateCcw } from "lucide-react";
 
 interface MessageBubbleProps {
   message: Message;
+  /** 失败消息一键重试 */
+  onRetry?: (failed: Message) => void;
+}
+
+/** 打字机逐字渲染 AI 回复；历史消息与用户消息直接整条显示 */
+function useTypewriter(text: string, enabled: boolean): { shown: string; done: boolean } {
+  const [len, setLen] = useState(enabled ? 0 : text.length);
+
+  useEffect(() => {
+    if (!enabled) {
+      setLen(text.length);
+      return;
+    }
+    setLen(0);
+    // 每 16ms 输出 2 个字符：中文场景约 120 字/秒，接近真人阅读速度
+    const step = 2;
+    const timer = window.setInterval(() => {
+      setLen((prev) => {
+        const next = prev + step;
+        if (next >= text.length) {
+          window.clearInterval(timer);
+          return text.length;
+        }
+        return next;
+      });
+    }, 16);
+    return () => window.clearInterval(timer);
+  }, [text, enabled]);
+
+  return { shown: text.slice(0, len), done: len >= text.length };
 }
 
 /** 聊天气泡：用户消息显示发送者头像+昵称（按 byId 实时解析服务端账号资料，改名自动生效） */
-export function MessageBubble({ message }: MessageBubbleProps) {
+export function MessageBubble({ message, onRetry }: MessageBubbleProps) {
   const isUser = message.role === "user";
+  // 仅对「刚生成的 AI 消息」启用打字机：历史加载的消息时间戳较早，直接整条显示
+  // 通过时间戳判断：AI 消息且时间戳在近 30 秒内视为新消息（历史加载不会命中）
+  const isNewAi = !isUser && Date.now() - message.timestamp < 30_000;
+  const { shown, done } = useTypewriter(message.content, isNewAi);
 
   // 发送者资料：按 byId 优先解析（家庭模式下可区分不同成员）
   const [sender, setSender] = useState<{ displayName: string; emoji: string } | null>(null);
@@ -50,6 +84,8 @@ export function MessageBubble({ message }: MessageBubbleProps) {
           ? "规则兜底解析（历史消息推断）"
           : "AI 智能解析（历史消息推断）";
 
+  const failed = message.status === "failed";
+
   return (
     <div className={`flex ${isUser ? "justify-end" : "justify-start"} mb-3 items-end gap-1.5`}>
       {/* 来源角标：位于气泡左外侧，形如「解析者头像」，不遮挡气泡内容 */}
@@ -68,9 +104,11 @@ export function MessageBubble({ message }: MessageBubbleProps) {
       <div className="max-w-[85%] md:max-w-[75%]">
         <div
           className={`rounded-xl px-4 py-2.5 ${
-            isUser
-              ? "bg-primary text-primary-foreground"
-              : "bg-card border text-foreground"
+            failed
+              ? "bg-destructive/10 border border-destructive/30 text-destructive"
+              : isUser
+                ? "bg-primary text-primary-foreground"
+                : "bg-card border text-foreground"
           }`}
         >
           {isUser && (sender?.displayName || message.by) && (
@@ -79,9 +117,12 @@ export function MessageBubble({ message }: MessageBubbleProps) {
               <span>{sender?.displayName || message.by}</span>
             </p>
           )}
-          <p className="text-sm leading-relaxed">{message.content}</p>
+          <p className="text-sm leading-relaxed whitespace-pre-wrap">
+            {shown}
+            {!done && <span className="inline-block w-[2px] h-3.5 align-middle bg-current animate-pulse ml-0.5" />}
+          </p>
 
-          {message.expense && (
+          {message.expense && !failed && (
             <div
               className={`mt-2 pt-2 border-t text-xs ${
                 isUser
@@ -93,9 +134,19 @@ export function MessageBubble({ message }: MessageBubbleProps) {
               {message.expense.amount.toFixed(2)} • {message.expense.category}
             </div>
           )}
+
+          {failed && onRetry && (
+            <button
+              type="button"
+              onClick={() => onRetry(message)}
+              className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-destructive hover:text-destructive/80 active:scale-95 transition-all border border-destructive/40 rounded-full px-2.5 py-1 hover:bg-destructive/10"
+            >
+              <RotateCcw className="w-3 h-3" />
+              重试
+            </button>
+          )}
         </div>
       </div>
     </div>
   );
 }
-

@@ -1,9 +1,8 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, lazy, Suspense } from "react";
 import { TopBar } from "./components/TopBar";
 import { ChatSection } from "./components/ChatSection";
 import { ExpensesSection } from "./components/ExpensesSection";
 import { StatsSection } from "./components/StatsSection";
-import { VoiceMode } from "./components/VoiceMode";
 import type { VoiceExpensePayload } from "./hooks/useVoiceConversation";
 import { AuthGate } from "./components/AuthGate";
 import { AccountLogin } from "./components/AccountLogin";
@@ -16,6 +15,11 @@ import { api } from "./lib/api";
 import { accountApi, getAccount, type AccountInfo } from "./lib/account";
 import type { Message, Expense } from "./types";
 import "./App.css";
+
+// 语音模式按需加载：不点击麦克风不下载相关代码，减小首屏体积
+const VoiceMode = lazy(() =>
+  import("./components/VoiceMode").then((m) => ({ default: m.VoiceMode }))
+);
 
 function App() {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -32,7 +36,8 @@ function App() {
   // 当前生效数据作用域：家庭共享区优先，否则个人区
   const activeScope = family?.scopeId || account?.scopeId || "";
 
-  // 已有会话：打开应用时刷新服务端资料与家庭归属，再加载数据
+  // 已有会话：打开应用时一次性刷新服务端资料与家庭归属，再按新作用域加载数据
+  // （合并原先两个重复的 useEffect，避免首屏双倍请求）
   useEffect(() => {
     if (!account) return;
     (async () => {
@@ -65,23 +70,6 @@ function App() {
       }
     });
   };
-
-  // 已有会话：打开应用时刷新服务端资料（其他设备改过昵称/头像也能同步）并加载数据
-  useEffect(() => {
-    if (!account) return;
-    accountApi.me().then((res) => {
-      if (res.success && res.account) {
-        setAccount(res.account);
-        loadExpenses(res.account.scopeId);
-        loadChatHistory(res.account.scopeId);
-      } else if (res.success === false && !res.account) {
-        // 未登录（无会话）：仅加载数据，交由 AccountLogin 处理登录
-        loadExpenses(account.scopeId);
-        loadChatHistory(account.scopeId);
-      }
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   const handleLogin = (acct: AccountInfo) => {
     setAccount(acct);
@@ -252,19 +240,26 @@ function App() {
 
       await loadExpenses(activeScope);
     } catch {
+      // 失败：保留原文并标记失败态，气泡上提供一键重试
       const errorMessage: Message = {
         id: crypto.randomUUID(),
         role: "ai",
         content: "抱歉，处理失败了，请重试。",
         timestamp: Date.now(),
+        status: "failed",
+        retryInput: input,
       };
       setMessages((prev) => [...prev, errorMessage]);
-
-      // Save error message
-      saveChatMessage(errorMessage);
     } finally {
       setIsLoading(false);
     }
+  };
+
+  // 失败重试：移除失败气泡后用原文重新发送
+  const handleRetryMessage = (failedMessage: Message) => {
+    if (!failedMessage.retryInput || isLoading) return;
+    setMessages((prev) => prev.filter((m) => m.id !== failedMessage.id));
+    handleSendMessage(failedMessage.retryInput);
   };
 
   const handleVoiceUserMessage = (message: string) => {
@@ -330,6 +325,7 @@ function App() {
             onLoadOlder={loadOlderMessages}
             hasMoreOlder={chatHasMore}
             loadingOlder={loadingOlder}
+            onRetry={handleRetryMessage}
           />
         </div>
         <div className="w-[38%] h-full px-4 py-2 overflow-hidden">
@@ -373,6 +369,7 @@ function App() {
               onLoadOlder={loadOlderMessages}
               hasMoreOlder={chatHasMore}
               loadingOlder={loadingOlder}
+              onRetry={handleRetryMessage}
             />
           </TabsContent>
 
@@ -392,13 +389,15 @@ function App() {
         <MobileTabBar tab={mobileTab} onChange={setMobileTab} />
       </div>
 
-      <VoiceMode
-        isActive={isVoiceMode}
-        onClose={() => setIsVoiceMode(false)}
-        onMessageReceived={handleVoiceMessageReceived}
-        onUserMessage={handleVoiceUserMessage}
-        scopeId={activeScope}
-      />
+      <Suspense fallback={null}>
+        <VoiceMode
+          isActive={isVoiceMode}
+          onClose={() => setIsVoiceMode(false)}
+          onMessageReceived={handleVoiceMessageReceived}
+          onUserMessage={handleVoiceUserMessage}
+          scopeId={activeScope}
+        />
+      </Suspense>
 
       {showProfile && (
         <ProfileEditor

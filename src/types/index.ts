@@ -21,6 +21,10 @@ export interface Message {
   byId?: string;
   /** AI 消息来源：ai = AI 智能解析，fallback = 规则兜底（决定气泡角标显示 🤖 还是 💻） */
   parsedBy?: 'ai' | 'fallback';
+  /** 发送状态：failed = 处理失败（仅本地态，不持久化到服务端） */
+  status?: 'ok' | 'failed';
+  /** 失败消息附带的原始输入，用于一键重试（不持久化） */
+  retryInput?: string;
   expense?: {
     id?: string;
     merchant: string;

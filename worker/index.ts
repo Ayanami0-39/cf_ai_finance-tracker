@@ -8,6 +8,7 @@ import { INTENTS } from "./ai/prompts/intent-classification";
 import { classifyIntent } from "./ai/classify-intent";
 import { queryExpenses } from "./ai/query-expenses";
 import { identifyExpenseToDelete } from "./ai/delete-expense";
+import { generateMonthlyReport } from "./ai/report";
 import {
   deriveToken,
   verifyRequest,
@@ -515,6 +516,31 @@ app.post('/api/voice-command', async (c) => {
       success: false,
       message: "Oops! Something went wrong."
     }, 500);
+  }
+});
+
+// AI 月报：基于某月账单生成自然语言消费总结，可选按成员过滤
+app.post('/api/report', async (c) => {
+  try {
+    const { userId, month, member } = await c.req.json();
+
+    if (!userId || !month || !/^\d{4}-\d{2}$/.test(month)) {
+      return c.json({ success: false, error: 'Missing userId or invalid month (YYYY-MM)' }, 400);
+    }
+
+    let expenses = await getExpensesWithMigration(c.env, userId);
+
+    if (member && member !== 'all') {
+      expenses = expenses.filter(
+        (e) => e.byId === member || (!e.byId && e.by === member)
+      );
+    }
+
+    const report = await generateMonthlyReport(c.env.AI, month, expenses);
+
+    return c.json({ success: true, report });
+  } catch (error) {
+    return c.json({ success: false, error: 'Report generation failed' }, 500);
   }
 });
 

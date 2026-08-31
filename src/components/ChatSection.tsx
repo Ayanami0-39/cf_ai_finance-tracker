@@ -16,6 +16,8 @@ interface ChatSectionProps {
   hasMoreOlder?: boolean;
   /** 正在加载更早的消息 */
   loadingOlder?: boolean;
+  /** 失败消息一键重试 */
+  onRetry?: (failed: Message) => void;
 }
 
 export function ChatSection({
@@ -26,6 +28,7 @@ export function ChatSection({
   onLoadOlder,
   hasMoreOlder,
   loadingOlder,
+  onRetry,
 }: ChatSectionProps) {
   const [input, setInput] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -118,7 +121,11 @@ export function ChatSection({
         )}
 
         {messages.map((message) => (
-          <MessageBubble key={message.id} message={message} />
+          <MessageBubble
+            key={message.id}
+            message={message}
+            onRetry={onRetry}
+          />
         ))}
 
         {isLoading && (

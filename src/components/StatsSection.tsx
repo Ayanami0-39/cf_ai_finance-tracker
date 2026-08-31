@@ -1,8 +1,10 @@
 import { useMemo, useState, useEffect, useRef } from "react";
 import type { Expense } from "@/types";
-import { accountApi } from "@/lib/account";
+import { accountApi, getAccount } from "@/lib/account";
+import { api } from "@/lib/api";
 import {
   aggregateMonth,
+  aggregateDateRange,
   categorySlices,
   changeRate,
   monthLabel,
@@ -25,6 +27,11 @@ import {
   Users,
   CalendarDays,
   X,
+  Store,
+  CalendarRange,
+  Sparkles,
+  Loader2,
+  Coins,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -32,17 +39,44 @@ interface StatsSectionProps {
   expenses: Expense[];
 }
 
+// ===== 周视图工具 =====
+
+/** ISO 周起始（周一）日期字符串 */
+function weekStartOf(d: Date): string {
+  const date = new Date(d);
+  const day = (date.getDay() + 6) % 7; // 周一=0
+  date.setDate(date.getDate() - day);
+  return toDateStr(date);
+}
+
+function toDateStr(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+function addDays(dateStr: string, days: number): string {
+  const [y, m, d] = dateStr.split("-").map(Number);
+  const dt = new Date(y, m - 1, d + days);
+  return toDateStr(dt);
+}
+
 export function StatsSection({ expenses }: StatsSectionProps) {
   const [cursor, setCursor] = useState<string>(() => monthKey(new Date()));
   const [memberFilter, setMemberFilter] = useState<string>("all");
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [trendMonth, setTrendMonth] = useState<string | null>(null);
+  // 月视图 / 周视图切换
+  const [viewMode, setViewMode] = useState<"month" | "week">("month");
+  const [weekAnchor, setWeekAnchor] = useState<string>(() => toDateStr(new Date()));
+  const [showReport, setShowReport] = useState(false);
+  const [reportText, setReportText] = useState<string | null>(null);
+  const [reportLoading, setReportLoading] = useState(false);
+  const [reportError, setReportError] = useState<string | null>(null);
 
   // 切换月份时清空图表选中态
   useEffect(() => {
     setSelectedCategory(null);
     setTrendMonth(null);
-  }, [cursor]);
+  }, [cursor, weekAnchor]);
 
   // 成员筛选来源：账单中出现过的记录者（byId 优先，旧数据回退 by 名字）
   const [profiles, setProfiles] = useState<Record<string, { displayName: string; emoji: string }>>({});
@@ -85,15 +119,35 @@ export function StatsSection({ expenses }: StatsSectionProps) {
     );
   }, [expenses, memberFilter]);
 
-  const agg = useMemo(() => aggregateMonth(filtered, cursor), [filtered, cursor]);
-  const prevAgg = useMemo(
-    () => aggregateMonth(filtered, shiftMonth(cursor, -1)),
-    [filtered, cursor]
-  );
+  // ---- 作用区间：月视图按 cursor 月；周视图按 weekAnchor 所在周 ----
+  const range = useMemo(() => {
+    if (viewMode === "week") {
+      const from = weekStartOf(new Date(weekAnchor + "T00:00:00"));
+      const to = addDays(from, 6);
+      const label = `${from.slice(5).replace("-", "/")} ~ ${to.slice(5).replace("-", "/")}`;
+      return { from, to, label };
+    }
+    return null;
+  }, [viewMode, weekAnchor]);
+
+  const agg = useMemo(() => {
+    if (viewMode === "week" && range) return aggregateDateRange(filtered, range.from, range.to);
+    return aggregateMonth(filtered, cursor);
+  }, [filtered, cursor, viewMode, range]);
+
+  // 对比区间：月视图比上月；周视图比上一周
+  const prevAgg = useMemo(() => {
+    if (viewMode === "week" && range) {
+      return aggregateDateRange(filtered, addDays(range.from, -7), addDays(range.to, -7));
+    }
+    return aggregateMonth(filtered, shiftMonth(cursor, -1));
+  }, [filtered, cursor, viewMode, range]);
+
   const lastYearAgg = useMemo(
     () => aggregateMonth(filtered, shiftMonth(cursor, -12)),
     [filtered, cursor]
   );
+
   const trend = useMemo(
     () => recentMonths(filtered, cursor, 6),
     [filtered, cursor]
@@ -101,27 +155,136 @@ export function StatsSection({ expenses }: StatsSectionProps) {
   const slices = useMemo(() => categorySlices(agg.byCategory), [agg]);
 
   const mom = changeRate(agg.expense, prevAgg.expense);
-  const yoy = changeRate(agg.expense, lastYearAgg.expense);
 
-  // 日均支出：仅对当前月按已过天数折算，历史月份按整月天数
+  // 日均支出：当前月按已过天数折算，历史月份按整月天数；周视图按已过天数（未来周按 7 天）
   const dailyAvg = useMemo(() => {
+    if (viewMode === "week" && range) {
+      const today = toDateStr(new Date());
+      const days = range.to >= today ? Math.max(1, daysBetween(range.from, today) + 1) : 7;
+      return days > 0 ? agg.expense / days : 0;
+    }
     const [y, m] = cursor.split("-").map(Number);
     const daysInMonth = new Date(y, m, 0).getDate();
     const now = new Date();
     const isCurrent = cursor === monthKey(now);
     const days = isCurrent ? now.getDate() : daysInMonth;
     return days > 0 ? agg.expense / days : 0;
-  }, [agg.expense, cursor]);
+  }, [agg.expense, cursor, viewMode, range]);
 
   const currentMonthKey = monthKey(new Date());
-  const canGoNext = cursor < currentMonthKey;
+  const canGoNext =
+    viewMode === "week"
+      ? range ? range.to < toDateStr(new Date()) : false
+      : cursor < currentMonthKey;
 
-  const hasAny = filtered.some((e) => e.date?.slice(0, 7) === cursor);
+  const hasAny =
+    viewMode === "week" && range
+      ? filtered.some((e) => e.date >= range.from && e.date <= range.to)
+      : filtered.some((e) => e.date?.slice(0, 7) === cursor);
+
+  // 周视图导航时同步移动 weekAnchor
+  const goPrev = () => {
+    if (viewMode === "week" && range) setWeekAnchor(addDays(range.from, -7));
+    else setCursor(shiftMonth(cursor, -1));
+  };
+  const goNext = () => {
+    if (viewMode === "week" && range) setWeekAnchor(addDays(range.from, 7));
+    else setCursor(shiftMonth(cursor, 1));
+  };
+
+  // ---- 分类环比（当月 vs 上月，按分类金额） ----
+  const categoryMom = useMemo(() => {
+    const prevByCat = prevAgg.byCategory;
+    return Object.entries(agg.byCategory)
+      .map(([name, value]) => ({
+        name,
+        value,
+        prev: prevByCat[name] || 0,
+        rate: prevByCat[name] > 0 ? (value - prevByCat[name]) / prevByCat[name] : null,
+      }))
+      .sort((a, b) => b.value - a.value);
+  }, [agg, prevAgg]);
+
+  // 涨幅最快的分类（涨幅绝对值最大且本期有消费）
+  const fastestGrowing = useMemo(
+    () =>
+      [...categoryMom]
+        .filter((c) => c.rate !== null)
+        .sort((a, b) => (b.rate! - a.rate!))[0] || null,
+    [categoryMom]
+  );
+
+  // ---- Top 商户（支出，按 merchant 聚合） ----
+  const topMerchants = useMemo(() => {
+    const inRange = viewMode === "week" && range
+      ? filtered.filter((e) => e.date >= range.from && e.date <= range.to)
+      : filtered.filter((e) => e.date?.slice(0, 7) === cursor);
+    const byMerchant: Record<string, number> = {};
+    for (const e of inRange) {
+      if (e.type === "income") continue;
+      const key = (e.merchant || e.description || "其他").trim().slice(0, 10) || "其他";
+      byMerchant[key] = (byMerchant[key] || 0) + e.amount;
+    }
+    return Object.entries(byMerchant)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5);
+  }, [filtered, cursor, viewMode, range]);
+
+  // ---- 收入来源分析（收入，按 merchant/description 聚合） ----
+  const incomeSources = useMemo(() => {
+    const inRange = viewMode === "week" && range
+      ? filtered.filter((e) => e.date >= range.from && e.date <= range.to)
+      : filtered.filter((e) => e.date?.slice(0, 7) === cursor);
+    const incomes = inRange.filter((e) => e.type === "income");
+    const total = incomes.reduce((s, e) => s + e.amount, 0);
+    const bySource: Record<string, number> = {};
+    for (const e of incomes) {
+      const key = (e.merchant || e.description || "其他收入").trim().slice(0, 10) || "其他收入";
+      bySource[key] = (bySource[key] || 0) + e.amount;
+    }
+    return {
+      total,
+      list: Object.entries(bySource)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 5)
+        .map(([name, v]) => ({ name, value: v, ratio: total > 0 ? v / total : 0 })),
+    };
+  }, [filtered, cursor, viewMode, range]);
+
+  // ---- AI 月报生成（仅月视图可用） ----
+  const handleGenerateReport = async () => {
+    const account = getAccount();
+    if (!account) return;
+    setReportLoading(true);
+    setReportError(null);
+    setReportText(null);
+    try {
+      const res = await api.getMonthlyReport(
+        account.scopeId,
+        cursor,
+        memberFilter
+      );
+      if (res.success && res.report) {
+        setReportText(res.report);
+        setShowReport(true);
+      } else {
+        setReportError(res.error || "生成失败，请稍后再试");
+        setShowReport(true);
+      }
+    } catch {
+      setReportError("网络异常，生成失败");
+      setShowReport(true);
+    } finally {
+      setReportLoading(false);
+    }
+  };
 
   const filterLabel =
     memberFilter === "all"
       ? "全部成员"
       : memberNameOf(memberFilter);
+
+  const periodLabel = viewMode === "week" && range ? range.label : monthLabel(cursor);
 
   return (
     <div className="h-full overflow-y-auto bg-background">
@@ -133,7 +296,7 @@ export function StatsSection({ expenses }: StatsSectionProps) {
               统计分析 / Statistics
             </h2>
             <p className="text-xs text-muted-foreground mt-0.5">
-              按月查看收支与分类占比
+              按月或按周查看收支与分类占比
             </p>
           </div>
           {/* Member filter */}
@@ -165,28 +328,53 @@ export function StatsSection({ expenses }: StatsSectionProps) {
           </label>
         </div>
 
-        {/* Month navigator */}
-        <div className="flex items-center justify-between bg-card border rounded-xl px-3 py-2.5 mb-4">
+        {/* Period navigator：月/周切换 + 前后导航 */}
+        <div className="flex items-center gap-2 bg-card border rounded-xl px-3 py-2.5 mb-4">
           <button
             type="button"
-            aria-label="上个月"
-            onClick={() => setCursor(shiftMonth(cursor, -1))}
-            className="w-9 h-9 rounded-lg hover:bg-muted flex items-center justify-center text-muted-foreground transition-colors active:bg-muted"
+            aria-label="上一期"
+            onClick={goPrev}
+            className="w-9 h-9 rounded-lg hover:bg-muted flex items-center justify-center text-muted-foreground transition-colors active:bg-muted flex-shrink-0"
           >
             <ChevronLeft className="w-5 h-5" />
           </button>
-          <span className="text-sm font-semibold text-foreground tabular-nums">
-            {monthLabel(cursor)}
+          <span className="text-sm font-semibold text-foreground tabular-nums flex-1 text-center">
+            {periodLabel}
           </span>
           <button
             type="button"
-            aria-label="下个月"
+            aria-label="下一期"
             disabled={!canGoNext}
-            onClick={() => setCursor(shiftMonth(cursor, 1))}
-            className="w-9 h-9 rounded-lg hover:bg-muted disabled:opacity-30 disabled:hover:bg-transparent flex items-center justify-center text-muted-foreground transition-colors active:bg-muted"
+            onClick={goNext}
+            className="w-9 h-9 rounded-lg hover:bg-muted disabled:opacity-30 disabled:hover:bg-transparent flex items-center justify-center text-muted-foreground transition-colors active:bg-muted flex-shrink-0"
           >
             <ChevronRight className="w-5 h-5" />
           </button>
+          {/* 月 / 周切换 */}
+          <div className="flex bg-muted rounded-lg p-0.5 flex-shrink-0 ml-1">
+            <button
+              type="button"
+              onClick={() => setViewMode("month")}
+              className={`px-2.5 h-7 text-xs rounded-md transition-colors ${
+                viewMode === "month"
+                  ? "bg-card shadow-sm text-foreground font-medium"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              月
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode("week")}
+              className={`px-2.5 h-7 text-xs rounded-md transition-colors ${
+                viewMode === "week"
+                  ? "bg-card shadow-sm text-foreground font-medium"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              周
+            </button>
+          </div>
         </div>
 
         {!hasAny ? (
@@ -233,21 +421,31 @@ export function StatsSection({ expenses }: StatsSectionProps) {
               />
             </motion.div>
 
-            {/* Change rates: MoM / YoY */}
+            {/* Change rates: MoM / YoY（周视图显示周环比 + 近6月趋势参考） */}
             <motion.div className="grid grid-cols-2 gap-2 md:gap-3" variants={cardVariants}>
               <ChangeCard
-                title="环比上月"
+                title={viewMode === "week" ? "环比上周" : "环比上月"}
                 base={prevAgg.expense}
                 rate={mom}
               />
-              <ChangeCard
-                title="同比去年"
-                base={lastYearAgg.expense}
-                rate={yoy}
-              />
+              {viewMode === "week" ? (
+                <div className="bg-card border rounded-xl p-3">
+                  <p className="text-xs text-muted-foreground mb-1.5">统计区间</p>
+                  <p className="text-sm text-foreground flex items-center gap-1.5">
+                    <CalendarRange className="w-3.5 h-3.5 text-muted-foreground" />
+                    {range?.label}
+                  </p>
+                </div>
+              ) : (
+                <ChangeCard
+                  title="同比去年"
+                  base={lastYearAgg.expense}
+                  rate={changeRate(agg.expense, lastYearAgg.expense)}
+                />
+              )}
             </motion.div>
 
-            {/* Category pie + ranking */}
+            {/* Category pie + ranking + 分类环比箭头 */}
             <motion.div className="bg-card border rounded-xl p-4" variants={cardVariants}>
               <div className="flex items-center justify-between mb-3">
                 <h3 className="text-sm font-semibold text-foreground">
@@ -266,7 +464,7 @@ export function StatsSection({ expenses }: StatsSectionProps) {
               </div>
               {slices.length === 0 ? (
                 <p className="text-xs text-muted-foreground py-8 text-center">
-                  本月没有支出记录
+                  本期没有支出记录
                 </p>
               ) : (
                 <div className="flex flex-col md:flex-row items-center gap-4 md:gap-6">
@@ -282,6 +480,7 @@ export function StatsSection({ expenses }: StatsSectionProps) {
                     {slices.map((s, i) => {
                       const isActive = selectedCategory === s.name;
                       const dimmed = selectedCategory !== null && !isActive;
+                      const cm = categoryMom.find((c) => c.name === s.name);
                       return (
                         <button
                           type="button"
@@ -301,6 +500,28 @@ export function StatsSection({ expenses }: StatsSectionProps) {
                           <span className="text-xs text-foreground flex-1 truncate text-left">
                             {s.name}
                           </span>
+                          {/* 分类环比箭头：与上月/上周同分类对比 */}
+                          {cm && cm.rate !== null && (
+                            <span
+                              title={`上期 ¥${cm.prev.toFixed(0)}`}
+                              className={`inline-flex items-center gap-0.5 text-[10px] tabular-nums flex-shrink-0 ${
+                                cm.rate > 0
+                                  ? "text-destructive"
+                                  : cm.rate < 0
+                                    ? "text-income"
+                                    : "text-muted-foreground/60"
+                              }`}
+                            >
+                              {cm.rate > 0 ? (
+                                <TrendingUp className="w-3 h-3" />
+                              ) : cm.rate < 0 ? (
+                                <TrendingDown className="w-3 h-3" />
+                              ) : (
+                                <Minus className="w-3 h-3" />
+                              )}
+                              {Math.abs(cm.rate * 100).toFixed(0)}%
+                            </span>
+                          )}
                           <span className="text-xs text-muted-foreground tabular-nums">
                             ¥{s.value.toFixed(2)}
                           </span>
@@ -310,38 +531,115 @@ export function StatsSection({ expenses }: StatsSectionProps) {
                         </button>
                       );
                     })}
+                    {fastestGrowing && fastestGrowing.rate! > 0 && (
+                      <p className="text-[10px] text-muted-foreground pt-1 flex items-center gap-1">
+                        <TrendingUp className="w-3 h-3 text-destructive" />
+                        {fastestGrowing.name}涨幅最快（+
+                        {(fastestGrowing.rate! * 100).toFixed(0)}%）
+                      </p>
+                    )}
                   </div>
                 </div>
               )}
             </motion.div>
 
-            {/* 6-month trend */}
-            <motion.div className="bg-card border rounded-xl p-4" variants={cardVariants}>
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="text-sm font-semibold text-foreground">
-                  近 6 个月趋势
-                </h3>
-                <span className="text-[10px] text-muted-foreground">
-                  点击柱子查看明细
-                </span>
-              </div>
-              <TrendBar
-                trend={trend}
-                cursor={cursor}
-                selected={trendMonth}
-                onSelect={(k) => setTrendMonth(k === trendMonth ? null : k)}
+            {/* Top 商户 + 收入来源（周/月通用） */}
+            <motion.div
+              className="grid grid-cols-1 md:grid-cols-2 gap-2 md:gap-3"
+              variants={cardVariants}
+            >
+              <TopMerchantsCard merchants={topMerchants} total={agg.expense} />
+              <IncomeSourcesCard
+                sources={incomeSources.list}
+                total={incomeSources.total}
               />
-              <AnimatePresence initial={false}>
-                {trendMonth && (
-                  <TrendDetail
-                    key={trendMonth}
-                    monthKeyStr={trendMonth}
-                    agg={trend.find((t) => t.key === trendMonth)!.agg}
-                    isCursor={trendMonth === cursor}
-                  />
-                )}
-              </AnimatePresence>
             </motion.div>
+
+            {/* 6-month trend（仅月视图显示） */}
+            {viewMode === "month" && (
+              <motion.div className="bg-card border rounded-xl p-4" variants={cardVariants}>
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-sm font-semibold text-foreground">
+                    近 6 个月趋势
+                  </h3>
+                  <span className="text-[10px] text-muted-foreground">
+                    点击柱子查看明细
+                  </span>
+                </div>
+                <TrendBar
+                  trend={trend}
+                  cursor={cursor}
+                  selected={trendMonth}
+                  onSelect={(k) => setTrendMonth(k === trendMonth ? null : k)}
+                />
+                <AnimatePresence initial={false}>
+                  {trendMonth && (
+                    <TrendDetail
+                      key={trendMonth}
+                      monthKeyStr={trendMonth}
+                      agg={trend.find((t) => t.key === trendMonth)!.agg}
+                      isCursor={trendMonth === cursor}
+                    />
+                  )}
+                </AnimatePresence>
+              </motion.div>
+            )}
+
+            {/* AI 月报（仅月视图） */}
+            {viewMode === "month" && (
+              <motion.div className="bg-card border rounded-xl p-4" variants={cardVariants}>
+                <div className="flex items-center justify-between gap-2 mb-2">
+                  <div>
+                    <h3 className="text-sm font-semibold text-foreground flex items-center gap-1.5">
+                      <Sparkles className="w-4 h-4 text-primary" />
+                      AI 消费报告
+                    </h3>
+                    <p className="text-[11px] text-muted-foreground mt-0.5">
+                      根据本月账单生成一段消费总结与建议
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleGenerateReport}
+                    disabled={reportLoading}
+                    className="flex-shrink-0 inline-flex items-center gap-1.5 h-8 px-3 rounded-full bg-primary text-primary-foreground text-xs font-medium hover:bg-primary/90 disabled:opacity-60 transition-colors active:scale-95"
+                  >
+                    {reportLoading ? (
+                      <>
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        生成中…
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="w-3.5 h-3.5" />
+                        {reportText ? "重新生成" : "生成报告"}
+                      </>
+                    )}
+                  </button>
+                </div>
+                <AnimatePresence initial={false}>
+                  {showReport && (
+                    <motion.div
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: "auto" }}
+                      exit={{ opacity: 0, height: 0 }}
+                      transition={{ duration: 0.25, ease: "easeOut" }}
+                      className="overflow-hidden"
+                    >
+                      <div className="mt-2 rounded-lg bg-muted/50 border p-3">
+                        {reportError ? (
+                          <p className="text-xs text-destructive">{reportError}</p>
+                        ) : (
+                          <p className="text-xs leading-relaxed text-foreground whitespace-pre-wrap">
+                            {reportText}
+                          </p>
+                        )}
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </motion.div>
+            )}
           </motion.div>
         )}
       </div>
@@ -412,8 +710,8 @@ function EmptyMonth({ memberName }: { memberName?: string }) {
     <div className="text-center py-16 bg-card rounded-xl border">
       <p className="text-sm text-muted-foreground">
         {memberName && memberName !== "全部成员"
-          ? `${memberName}在该月份暂无数据`
-          : "该月份暂无数据"}
+          ? `${memberName}在该时间段暂无数据`
+          : "该时间段暂无数据"}
       </p>
       <p className="text-xs text-muted-foreground/70 mt-2">
         在「对话」页记一笔，统计会自动更新
@@ -501,6 +799,121 @@ function ChangeCard({
         </div>
       )}
     </div>
+  );
+}
+
+/** Top 商户排行（条形排行样式） */
+function TopMerchantsCard({
+  merchants,
+  total,
+}: {
+  merchants: Array<[string, number]>;
+  total: number;
+}) {
+  if (merchants.length === 0) {
+    return (
+      <div className="bg-card border rounded-xl p-4">
+        <h3 className="text-sm font-semibold text-foreground mb-2 flex items-center gap-1.5">
+          <Store className="w-4 h-4 text-muted-foreground" />
+          消费商户 Top 5
+        </h3>
+        <p className="text-xs text-muted-foreground py-4 text-center">
+          本期没有支出记录
+        </p>
+      </div>
+    );
+  }
+  const max = merchants[0][1];
+  return (
+    <div className="bg-card border rounded-xl p-4">
+      <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-1.5">
+        <Store className="w-4 h-4 text-muted-foreground" />
+        消费商户 Top 5
+      </h3>
+      <div className="space-y-2">
+        {merchants.map(([name, value], i) => (
+          <div key={name} className="flex items-center gap-2">
+            <span className="w-4 text-[10px] text-muted-foreground tabular-nums text-right flex-shrink-0">
+              {i + 1}
+            </span>
+            <span className="text-xs text-foreground w-16 md:w-20 truncate flex-shrink-0">
+              {name}
+            </span>
+            <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
+              <motion.div
+                className="h-full bg-primary/70 rounded-full"
+                initial={{ width: 0 }}
+                animate={{ width: `${(value / max) * 100}%` }}
+                transition={{ duration: 0.5, ease: "easeOut" }}
+              />
+            </div>
+            <span className="text-[11px] text-muted-foreground tabular-nums w-14 text-right flex-shrink-0">
+              ¥{value.toFixed(0)}
+              {total > 0 && (
+                <span className="text-muted-foreground/60"> · {((value / total) * 100).toFixed(0)}%</span>
+              )}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** 收入来源分析 */
+function IncomeSourcesCard({
+  sources,
+  total,
+}: {
+  sources: Array<{ name: string; value: number; ratio: number }>;
+  total: number;
+}) {
+  return (
+    <div className="bg-card border rounded-xl p-4">
+      <h3 className="text-sm font-semibold text-foreground mb-3 flex items-center gap-1.5">
+        <Coins className="w-4 h-4 text-income" />
+        收入来源分析
+      </h3>
+      {sources.length === 0 ? (
+        <p className="text-xs text-muted-foreground py-4 text-center">
+          本期没有收入记录
+        </p>
+      ) : (
+        <div className="space-y-2">
+          <p className="text-[11px] text-muted-foreground">
+            本期收入共 ¥{total.toFixed(2)}，来自 {sources.length} 个来源
+          </p>
+          {sources.map((s) => (
+            <div key={s.name} className="flex items-center gap-2">
+              <span className="text-xs text-foreground w-16 md:w-20 truncate flex-shrink-0">
+                {s.name}
+              </span>
+              <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
+                <motion.div
+                  className="h-full bg-income/70 rounded-full"
+                  initial={{ width: 0 }}
+                  animate={{ width: `${Math.max(s.ratio * 100, 4)}%` }}
+                  transition={{ duration: 0.5, ease: "easeOut" }}
+                />
+              </div>
+              <span className="text-[11px] text-muted-foreground tabular-nums w-14 text-right flex-shrink-0">
+                ¥{s.value.toFixed(0)} · {(s.ratio * 100).toFixed(0)}%
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------- utils ----------
+
+function daysBetween(from: string, to: string): number {
+  const [fy, fm, fd] = from.split("-").map(Number);
+  const [ty, tm, td] = to.split("-").map(Number);
+  return Math.round(
+    (new Date(ty, tm - 1, td).getTime() - new Date(fy, fm - 1, fd).getTime()) / 86400000
   );
 }
 

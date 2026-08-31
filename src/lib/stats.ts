@@ -88,3 +88,30 @@ export function recentMonths(
   for (let i = n - 1; i >= 0; i--) keys.push(shiftMonth(endKey, -i));
   return keys.map((k) => ({ key: k, agg: aggregateMonth(expenses, k) }));
 }
+
+/** 任意日期区间聚合 [from, to]（YYYY-MM-DD，闭区间），供周视图等复用 */
+export function aggregateDateRange(
+  expenses: Expense[],
+  from: string,
+  to: string
+): MonthAgg {
+  const agg: MonthAgg = {
+    income: 0,
+    expense: 0,
+    balance: 0,
+    count: 0,
+    byCategory: {},
+  };
+  for (const e of expenses) {
+    if (!e.date || e.date < from || e.date > to) continue;
+    if (e.type === "income") {
+      agg.income += e.amount;
+    } else {
+      agg.expense += e.amount;
+      agg.byCategory[e.category] = (agg.byCategory[e.category] || 0) + e.amount;
+    }
+    agg.count++;
+  }
+  agg.balance = agg.income - agg.expense;
+  return agg;
+}
