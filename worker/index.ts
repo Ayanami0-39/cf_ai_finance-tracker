@@ -298,7 +298,7 @@ app.get('/api/chat/:userId', async (c) => {
     const userId = c.req.param('userId');
 
     // 游标分页：?before=<timestamp> 返回该时间戳之前的消息（新→旧取一页，返回旧→新升序）。
-    // 不带 before 时全量返回（兼容旧客户端/查询问答的上下文需求）。
+    // 首屏（不带 before）：只返回最新 limit 条，避免长会话一次全量下发。
     const beforeParam = c.req.query('before');
     const before = beforeParam ? Number(beforeParam) : null;
     const limit = Math.min(Math.max(Number(c.req.query('limit') || 20), 1), 100);
@@ -312,6 +312,9 @@ app.get('/api/chat/:userId', async (c) => {
       const older = messages.filter((m) => m.timestamp < before);
       hasMore = older.length > limit;
       messages = hasMore ? older.slice(-limit) : older;
+    } else {
+      hasMore = messages.length > limit;
+      if (hasMore) messages = messages.slice(-limit);
     }
 
     return c.json({ success: true, messages, count: messages.length, hasMore });
