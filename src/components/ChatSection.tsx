@@ -30,38 +30,41 @@ export function ChatSection({
   const [input, setInput] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  // 上一批消息的首/尾 id：区分「前插更早消息」与「追加新消息」
+  const prevEdgeRef = useRef<{ first: string | undefined; last: string | undefined }>({
+    first: undefined,
+    last: undefined,
+  });
+  // 翻页前记录的视口锚点（视口顶距内容底部的偏移），前插渲染后按高度差恢复，避免视口跳动
+  const pendingRestoreRef = useRef<number | null>(null);
 
   const scrollToBottom = (smooth = true) => {
     messagesEndRef.current?.scrollIntoView({ behavior: smooth ? "smooth" : "auto" });
   };
 
-  // 新消息（追加在尾部）时滚动到底部
   useEffect(() => {
-    scrollToBottom();
-  }, [messages.length, isLoading]);
+    const first = messages[0]?.id;
+    const last = messages[messages.length - 1]?.id;
+    const prev = prevEdgeRef.current;
 
-  // 翻页加载更早消息后：保持视口位置（记录加载前的滚动高度差，恢复到同一批消息上）
-  const prevScrollHeightRef = useRef(0);
-  useEffect(() => {
-    const el = scrollRef.current;
-    if (!el || !loadingOlder) return;
-    prevScrollHeightRef.current = el.scrollHeight - el.scrollTop;
-  }, [loadingOlder]);
-
-  useEffect(() => {
-    const el = scrollRef.current;
-    if (!el || loadingOlder || prevScrollHeightRef.current === 0) return;
-    el.scrollTop = el.scrollHeight - prevScrollHeightRef.current;
-    prevScrollHeightRef.current = 0;
-  }, [messages, loadingOlder]);
+    if (pendingRestoreRef.current != null && scrollRef.current) {
+      // 前插更早消息：视口保持停在原来那条消息上，不回滚
+      const el = scrollRef.current;
+      el.scrollTop = el.scrollHeight - pendingRestoreRef.current;
+      pendingRestoreRef.current = null;
+    } else if (last !== prev.last) {
+      // 追加新消息（含首屏加载）：滚动到底部
+      scrollToBottom();
+    }
+    prevEdgeRef.current = { first, last };
+  }, [messages, isLoading]);
 
   const handleLoadOlder = async () => {
     if (!onLoadOlder || loadingOlder) return;
-    // 记录当前视口底部位置，加载后恢复
+    // 在 setState 前同步记录视口锚点，前插渲染完成后由上面的 effect 恢复
     const el = scrollRef.current;
-    if (el) prevScrollHeightRef.current = el.scrollHeight - el.scrollTop;
+    if (el) pendingRestoreRef.current = el.scrollHeight - el.scrollTop;
     await onLoadOlder();
-    if (!loadingOlder) prevScrollHeightRef.current = 0;
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
