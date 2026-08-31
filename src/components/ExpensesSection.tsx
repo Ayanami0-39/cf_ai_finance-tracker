@@ -18,6 +18,12 @@ export function ExpensesSection({
 }: ExpensesSectionProps) {
   const sorted = [...expenses].sort((a, b) => b.createdAt - a.createdAt);
 
+  // 记录分页：默认只展示最新 10 条，底部「加载更早」翻页追加，避免长列表一次渲染
+  const EXPENSE_PAGE_SIZE = 10;
+  const [visibleCount, setVisibleCount] = useState(EXPENSE_PAGE_SIZE);
+  const visible = sorted.slice(0, visibleCount);
+  const hasMoreExpenses = sorted.length > visibleCount;
+
   // 记录者资料从服务端解析：byId 优先（账号名），回退 by（昵称）
   const [profiles, setProfiles] = useState<Record<string, { displayName: string; emoji: string }>>({});
   const me: AccountInfo | null = getAccount();
@@ -76,7 +82,7 @@ export function ExpensesSection({
           </div>
         ) : (
           <div className="bg-card rounded-xl border overflow-hidden">
-            {sorted.map((expense) => (
+            {visible.map((expense) => (
               <ExpenseCard
                 key={expense.id}
                 expense={expense}
@@ -85,6 +91,18 @@ export function ExpensesSection({
                 onEdit={onEditExpense}
               />
             ))}
+          </div>
+        )}
+
+        {hasMoreExpenses && (
+          <div className="flex justify-center pt-3">
+            <button
+              type="button"
+              onClick={() => setVisibleCount((c) => c + EXPENSE_PAGE_SIZE)}
+              className="text-xs text-muted-foreground hover:text-foreground h-8 px-4 rounded-full border bg-card hover:bg-muted transition-colors"
+            >
+              ↑ 加载更早的记录（还有 {sorted.length - visibleCount} 条）
+            </button>
           </div>
         )}
       </div>

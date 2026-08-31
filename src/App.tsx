@@ -140,7 +140,7 @@ function App() {
   };
 
   // 聊天分页：默认只加载最新 CHAT_PAGE_SIZE 条，更早的按需翻页加载
-  const CHAT_PAGE_SIZE = 20;
+  const CHAT_PAGE_SIZE = 10;
   const [chatHasMore, setChatHasMore] = useState(false);
   const [loadingOlder, setLoadingOlder] = useState(false);
   const oldestChatTsRef = useRef<number | null>(null);
@@ -362,9 +362,9 @@ function App() {
         <Tabs
           value={mobileTab}
           onValueChange={(v) => setMobileTab(v as "chat" | "expenses" | "stats")}
-          className="h-full flex flex-col flex-1"
+          className="h-full flex flex-col flex-1 min-h-0"
         >
-          <TabsContent value="chat" className="flex-1 mt-0 overflow-hidden">
+          <TabsContent value="chat" className="flex-1 mt-0 overflow-hidden min-h-0">
             <ChatSection
               messages={messages}
               isLoading={isLoading}
@@ -376,7 +376,7 @@ function App() {
             />
           </TabsContent>
 
-          <TabsContent value="expenses" className="flex-1 mt-0 overflow-hidden">
+          <TabsContent value="expenses" className="flex-1 mt-0 overflow-hidden min-h-0">
             <ExpensesSection
               expenses={expenses}
               onDeleteExpense={handleDeleteExpense}
@@ -384,7 +384,7 @@ function App() {
             />
           </TabsContent>
 
-          <TabsContent value="stats" className="flex-1 mt-0 overflow-hidden">
+          <TabsContent value="stats" className="flex-1 mt-0 overflow-hidden min-h-0">
             <StatsSection expenses={expenses} />
           </TabsContent>
         </Tabs>
