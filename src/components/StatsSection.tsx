@@ -500,16 +500,35 @@ export function StatsSection({ expenses }: StatsSectionProps) {
                           onClick={() =>
                             setSelectedCategory(isActive ? null : s.name)
                           }
-                          className={`w-full flex items-center gap-2 rounded-lg px-2 py-1.5 -mx-2 transition-colors ${
+                          className={`w-full flex items-center gap-2 rounded-lg px-2 py-1.5 -mx-2 transition-colors relative ${
                             isActive ? "bg-muted" : "hover:bg-muted/60 active:bg-muted"
                           }`}
                           style={{ opacity: dimmed ? 0.45 : 1 }}
                         >
+                          {/* 选中指示竖条：与饼图选中态联动 */}
+                          {isActive && (
+                            <span
+                              className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-4 rounded-full"
+                              style={{ background: PALETTE[i % PALETTE.length] }}
+                            />
+                          )}
                           <span
-                            className="w-2.5 h-2.5 rounded-sm flex-shrink-0"
-                            style={{ background: PALETTE[i % PALETTE.length] }}
+                            className={`w-2.5 h-2.5 rounded-sm flex-shrink-0 ${isActive ? "ring-2 ring-offset-1" : ""}`}
+                            style={{
+                              background: PALETTE[i % PALETTE.length],
+                              ...(isActive
+                                ? ({
+                                    "--tw-ring-color": `${PALETTE[i % PALETTE.length]}55`,
+                                    ringOffsetColor: "transparent",
+                                  } as React.CSSProperties)
+                                : {}),
+                            }}
                           />
-                          <span className="text-xs text-foreground flex-1 min-w-0 truncate text-left">
+                          <span
+                            className={`text-xs flex-1 min-w-0 truncate text-left ${
+                              isActive ? "text-foreground font-semibold" : "text-foreground"
+                            }`}
+                          >
                             {s.name}
                           </span>
                           {/* 分类环比箭头：与上月/上周同分类对比 */}
@@ -845,7 +864,10 @@ function TopMerchantsCard({
         消费商户 Top 5
       </h3>
       <div className="space-y-2">
-        {merchants.map(([name, value], i) => (
+        {merchants.map(([name, value], i) => {
+          // 渐变色阶：数值越高（排名越靠前）色号越深
+          const fill = RANK_SHADES[i % RANK_SHADES.length];
+          return (
           <div key={name} className="flex items-center gap-2">
             <span className="w-4 text-[10px] text-muted-foreground tabular-nums text-right flex-shrink-0">
               {i + 1}
@@ -855,7 +877,10 @@ function TopMerchantsCard({
             </span>
             <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
               <motion.div
-                className="h-full bg-primary/70 rounded-full"
+                className="h-full rounded-full"
+                style={{
+                  background: `linear-gradient(90deg, ${fill}B3 0%, ${fill} 100%)`,
+                }}
                 initial={{ width: 0 }}
                 animate={{ width: `${(value / max) * 100}%` }}
                 transition={{ duration: 0.5, ease: "easeOut" }}
@@ -868,7 +893,8 @@ function TopMerchantsCard({
               )}
             </span>
           </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
@@ -898,14 +924,20 @@ function IncomeSourcesCard({
             本期收入共 ¥{total >= 1000 ? total.toFixed(0) : total.toFixed(2)}，来自{" "}
             {sources.length} 个来源
           </p>
-          {sources.map((s) => (
+          {sources.map((s, i) => {
+            // 渐变色阶：数值越高（排名越靠前）色号越深
+            const fill = RANK_SHADES_GREEN[i % RANK_SHADES_GREEN.length];
+            return (
             <div key={s.name} className="flex items-center gap-2">
               <span className="text-xs text-foreground min-w-0 w-20 truncate flex-shrink-0">
                 {s.name}
               </span>
               <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
                 <motion.div
-                  className="h-full bg-income/70 rounded-full"
+                  className="h-full rounded-full"
+                  style={{
+                    background: `linear-gradient(90deg, ${fill}B3 0%, ${fill} 100%)`,
+                  }}
                   initial={{ width: 0 }}
                   animate={{ width: `${Math.max(s.ratio * 100, 4)}%` }}
                   transition={{ duration: 0.5, ease: "easeOut" }}
@@ -916,7 +948,8 @@ function IncomeSourcesCard({
                 <span className="text-muted-foreground/60"> · {(s.ratio * 100).toFixed(0)}%</span>
               </span>
             </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>
@@ -924,6 +957,11 @@ function IncomeSourcesCard({
 }
 
 // ---------- utils ----------
+
+/** 排行条渐变色阶：数值越高（排名越靠前）色号越深，支出侧 primary 色系 */
+const RANK_SHADES = ["#4f46e5", "#6366f1", "#818cf8", "#a5b4fc", "#c7d2fe"];
+/** 收入侧绿色系（与 income 色呼应），同样由深到浅 */
+const RANK_SHADES_GREEN = ["#15803d", "#16a34a", "#22c55e", "#4ade80", "#86efac"];
 
 function daysBetween(from: string, to: string): number {
   const [fy, fm, fd] = from.split("-").map(Number);

@@ -85,17 +85,19 @@ export function PieChart({ slices, size = 180, selected = null, onSelect }: PieC
       {arcs.map((a, i) => {
         const isActive = selected === a.slice.name;
         const dimmed = selected !== null && !isActive;
-        const off = isActive ? 7 : 0;
+        // 细扇区（占比<8%）外移距离加大，选中时更易辨认
+        const thin = a.slice.ratio < 0.08;
+        const off = isActive ? (thin ? 10 : 7) : 0;
         return (
           <motion.path
             key={a.slice.name}
             d={a.d}
             fill={a.color}
             stroke="white"
-            strokeWidth={isActive ? 2 : 1.5}
+            strokeWidth={isActive ? (thin ? 3 : 2) : 1.5}
             initial={{ opacity: 0, scale: 0.8 }}
             animate={{
-              opacity: dimmed ? 0.3 : 1,
+              opacity: dimmed ? 0.18 : 1,
               scale: 1,
               x: Math.cos(rad(a.mid)) * off,
               y: Math.sin(rad(a.mid)) * off,
@@ -106,6 +108,29 @@ export function PieChart({ slices, size = 180, selected = null, onSelect }: PieC
           />
         );
       })}
+      {/* 选中扇区的外圈高亮光晕：更宽的同色半透明描边缓慢呼吸，细条也一眼可见 */}
+      {active && (
+        <motion.path
+          d={arcs.find((a) => a.slice.name === active.name)!.d}
+          fill="none"
+          stroke={arcs.find((a) => a.slice.name === active.name)!.color}
+          strokeWidth={active.ratio < 0.08 ? 9 : 7}
+          strokeLinejoin="round"
+          initial={{ opacity: 0 }}
+          animate={{
+            opacity: [0.2, 0.45, 0.2],
+            x: Math.cos(rad(arcs.find((a) => a.slice.name === active.name)!.mid)) *
+              (active.ratio < 0.08 ? 10 : 7),
+            y: Math.sin(rad(arcs.find((a) => a.slice.name === active.name)!.mid)) *
+              (active.ratio < 0.08 ? 10 : 7),
+          }}
+          transition={{
+            opacity: { duration: 1.6, repeat: Infinity },
+            default: { duration: 0.3 },
+          }}
+          className="pointer-events-none"
+        />
+      )}
       {/* 中心文字：未选中显示总支出，选中显示该分类明细 */}
       <g className="pointer-events-none">
         {active ? (
