@@ -80,6 +80,8 @@ MERCHANT EXTRACTION RULES:
 - Extract brand/store names: 星巴克,瑞幸,麦当劳,美团,淘宝,盒马 etc.
 - No clear merchant → use main subject ("咖啡" → "咖啡", "coffee" → "Coffee")
 - Keep it short and clean
+- INCOME source: strip verbs and suffixes, keep the CORE NOUN ONLY.
+  "卖了课件收入300" → merchant "课件" (NOT 卖课件/卖了课件收入); "收到红包200" → "红包"; "工资到账8000" → "工资"
 
 EXAMPLES (bilingual):
 
@@ -106,6 +108,9 @@ Output: { "type": "expense", "amount": 30, "merchant": "打车", "category": "Tr
 
 Input: "收了个红包 200 块"
 Output: { "type": "income", "amount": 200, "merchant": "红包", "category": "Income" }
+
+Input: "卖课件收入500块"
+Output: { "type": "income", "amount": 500, "merchant": "课件", "category": "Income" }
 
 Input: "打车去机场花了45"
 Output: { "type": "expense", "amount": 45, "merchant": "打车", "category": "Transportation" }

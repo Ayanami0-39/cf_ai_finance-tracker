@@ -62,9 +62,11 @@ export async function processExpenseInput(
       return fallbackParsing(input);
     }
 
-    const merchant = typeof parsed.merchant === 'string' ? parsed.merchant : 'Unknown';
     const category = parsed.category as ExpenseCategory | 'Income';
     const type: 'expense' | 'income' = parsed.type === 'income' ? 'income' : 'expense';
+    // 收入来源归一化：消除「卖课件/卖了课件收入/课件」类随机变体
+    const rawMerchant = typeof parsed.merchant === 'string' ? parsed.merchant : 'Unknown';
+    const merchant = type === 'income' ? normalizeIncomeMerchant(rawMerchant) : rawMerchant;
 
     // 日期校验：仅接受 YYYY-MM-DD，且要求输入中确有日期线索（防止小模型幻觉出日期）
     // AI 漏填 date 但输入确有日期线索时，用正则 extractDate 从原文兜底提取，避免静默记成今天
@@ -98,7 +100,23 @@ export async function processExpenseInput(
 }
 
 /**
- * 本地模板生成确认文案（替代 AI 生成文案）：
+ * 收入来源（merchant）归一化：小模型对同一来源常产出随机变体，
+ * 如「卖课件 / 卖了课件收入 / 课件」。规则：
+ * 1. 去掉句尾的「收入/进账/入账/到账」等后缀
+ * 2. 剥离开头的动作词（卖/卖了/售出/收到/到账 等）及其时态助词（了/出/掉）
+ * 3. 剩余部分为空则回退为「收入」
+ */
+export function normalizeIncomeMerchant(merchant: string): string {
+  let m = merchant.trim();
+  if (!m) return '收入';
+  // 去尾缀（可重复出现，如「课件收入」）
+  m = m.replace(/(收入|进账|入账|到账|款项|货款)+$/g, '').trim();
+  // 剥离开头动作词 + 时态助词（可叠加，如「卖掉了」）
+  m = m.replace(/^(卖了|卖掉|卖出|售出|卖|收到|收到了|进账|入账|到账|收入|转账|退了|退款|报销了|报销)+/g, '').trim();
+  return m || '收入';
+}
+/**
+ * 本地模板生成确认文案（替代 AI 文案）：
  * 8B 级小模型中文生成不稳定，曾出现「很期 11.8 元币存计。」类乱码；
  * 确认语本质是固定信息（金额/商家/日期），模板生成 100% 可靠。
  */
@@ -334,7 +352,7 @@ function fallbackParsing(input: string): ProcessedExpense {
   if (isIncome) {
     category = 'Income';
     const incMatch = input.match(/(工资|薪水|红包|报销|退款|奖金|利息|salary|bonus|refund)/i);
-    merchant = incMatch ? incMatch[1] : '收入';
+    merchant = normalizeIncomeMerchant(incMatch ? incMatch[1] : '收入');
   } else {
     // Chinese keyword categories first
     for (const [cat, pattern] of CN_CATEGORY_KEYWORDS) {

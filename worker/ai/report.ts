@@ -1,4 +1,5 @@
 import { GLM_MODEL, GLM_THINKING_OFF, extractAiText, stripThinking } from './extract-ai-text';
+import { normalizeIncomeMerchant } from './parse-expense';
 import type { Expense } from '../types/expense';
 
 const SYSTEM_MESSAGE =
@@ -50,7 +51,7 @@ export async function generateMonthlyReport(
   const incomeBySource: Record<string, number> = {};
   for (const e of inMonth) {
     if (e.type === 'income') {
-      const src = (e.merchant || e.description || '其他收入').trim().slice(0, 12) || '其他收入';
+      const src = normalizeIncomeMerchant((e.merchant || e.description || '其他收入').trim()) || '其他收入';
       incomeBySource[src] = (incomeBySource[src] || 0) + e.amount;
       continue;
     }

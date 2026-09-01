@@ -14,6 +14,7 @@ import {
   type MonthAgg,
 } from "@/lib/stats";
 import { PieChart, PALETTE } from "./PieChart";
+import { normalizeIncomeMerchant } from "@/lib/income-merchant";
 import {
   ChevronLeft,
   ChevronRight,
@@ -152,6 +153,16 @@ export function StatsSection({ expenses }: StatsSectionProps) {
     () => recentMonths(filtered, cursor, 6),
     [filtered, cursor]
   );
+  // 6 个月合计的分类金额降序作为堆叠顺序，保证各月颜色一致（柱图与明细共用）
+  const trendStackOrder = useMemo(() => {
+    const sum: Record<string, number> = {};
+    for (const t of trend)
+      for (const [c, v] of Object.entries(t.agg.byCategory))
+        sum[c] = (sum[c] || 0) + v;
+    return Object.entries(sum)
+      .sort((a, b) => b[1] - a[1])
+      .map(([c]) => c);
+  }, [trend]);
   const slices = useMemo(() => categorySlices(agg.byCategory), [agg]);
 
   const mom = changeRate(agg.expense, prevAgg.expense);
@@ -239,7 +250,8 @@ export function StatsSection({ expenses }: StatsSectionProps) {
     const total = incomes.reduce((s, e) => s + e.amount, 0);
     const bySource: Record<string, number> = {};
     for (const e of incomes) {
-      const key = (e.merchant || e.description || "其他收入").trim().slice(0, 10) || "其他收入";
+      const raw = (e.merchant || e.description || "其他收入").trim();
+      const key = normalizeIncomeMerchant(raw) || "其他收入";
       bySource[key] = (bySource[key] || 0) + e.amount;
     }
     return {
@@ -571,6 +583,7 @@ export function StatsSection({ expenses }: StatsSectionProps) {
                   cursor={cursor}
                   selected={trendMonth}
                   onSelect={(k) => setTrendMonth(k === trendMonth ? null : k)}
+                  stackOrder={trendStackOrder}
                 />
                 <AnimatePresence initial={false}>
                   {trendMonth && (
@@ -579,6 +592,7 @@ export function StatsSection({ expenses }: StatsSectionProps) {
                       monthKeyStr={trendMonth}
                       agg={trend.find((t) => t.key === trendMonth)!.agg}
                       isCursor={trendMonth === cursor}
+                      stackOrder={trendStackOrder}
                     />
                   )}
                 </AnimatePresence>
@@ -937,11 +951,13 @@ function TrendBar({
   cursor,
   selected,
   onSelect,
+  stackOrder,
 }: {
   trend: Array<{ key: string; agg: MonthAgg }>;
   cursor: string;
   selected: string | null;
   onSelect: (key: string) => void;
+  stackOrder: string[];
 }) {
   const rawMax = Math.max(
     ...trend.map((t) => Math.max(t.agg.expense, t.agg.income)),
@@ -949,17 +965,6 @@ function TrendBar({
   );
   const scaleMax = niceMax(rawMax);
   const ticks = [1, 0.75, 0.5, 0.25, 0].map((r) => Math.round(scaleMax * r));
-
-  // 6 个月合计的分类金额降序作为堆叠顺序，保证各月颜色一致
-  const stackOrder = useMemo(() => {
-    const sum: Record<string, number> = {};
-    for (const t of trend)
-      for (const [c, v] of Object.entries(t.agg.byCategory))
-        sum[c] = (sum[c] || 0) + v;
-    return Object.entries(sum)
-      .sort((a, b) => b[1] - a[1])
-      .map(([c]) => c);
-  }, [trend]);
 
   return (
     <div>
@@ -996,11 +1001,7 @@ function TrendBar({
               value: t.agg.byCategory[c] || 0,
               color: PALETTE[i % PALETTE.length],
             }));
-            const topIdx = (() => {
-              for (let i = stack.length - 1; i >= 0; i--)
-                if (stack[i].value > 0) return i;
-              return -1;
-            })();
+            const topIdx = stack.findIndex((seg) => seg.value > 0);
             return (
               <button
                 type="button"
@@ -1011,7 +1012,7 @@ function TrendBar({
                 }`}
               >
                 <div className="w-full flex items-end justify-center gap-0.5 flex-1">
-                  {/* 支出：按分类堆叠的多色柱（最顶部段做圆角，与收入柱一致） */}
+                  {/* 支出：按分类堆叠的多色柱（金额大的分类在前 → 渲染在上，圆角给最上段） */}
                   <div className="w-2.5 md:w-3 h-full flex flex-col justify-end overflow-hidden">
                     {stack.map((seg, si) =>
                       seg.value > 0 ? (
@@ -1029,9 +1030,9 @@ function TrendBar({
                       ) : null
                     )}
                   </div>
-                  {/* 收入：独立细柱 */}
+                  {/* 收入：与支出柱同宽同圆角，仅颜色不同 */}
                   <motion.div
-                    className={`w-1.5 rounded-t bg-income/60 ${
+                    className={`w-2.5 md:w-3 rounded-t bg-income/60 ${
                       isSelected ? "bg-income" : ""
                     }`}
                     initial={{ height: 0 }}
@@ -1055,8 +1056,12 @@ function TrendBar({
           })}
         </div>
       </div>
-      {/* 图例 */}
+      {/* 图例：收入（绿）居首，分类按堆叠顺序排列 */}
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-3 pt-2.5 border-t border-border/50">
+        <span className="inline-flex items-center gap-1 text-[10px] text-muted-foreground">
+          <span className="w-2 h-2 rounded-sm bg-income/70" />
+          收入
+        </span>
         {stackOrder.map((c, i) => (
           <span
             key={c}
@@ -1069,10 +1074,6 @@ function TrendBar({
             {c}
           </span>
         ))}
-        <span className="inline-flex items-center gap-1 text-[10px] text-muted-foreground">
-          <span className="w-2 h-2 rounded-sm bg-income/70" />
-          收入
-        </span>
       </div>
     </div>
   );
@@ -1083,10 +1084,12 @@ function TrendDetail({
   monthKeyStr,
   agg,
   isCursor,
+  stackOrder,
 }: {
   monthKeyStr: string;
   agg: MonthAgg;
   isCursor: boolean;
+  stackOrder: string[];
 }) {
   const [y, m] = monthKeyStr.split("-").map(Number);
   const balancePositive = agg.balance >= 0;
@@ -1146,6 +1149,38 @@ function TrendDetail({
           <p className="text-[11px] text-muted-foreground mt-2 text-center">
             共 {agg.count} 笔记录
           </p>
+        )}
+        {/* 支出分类占比：与柱图同色，仅列出有金额的分类 */}
+        {agg.expense > 0 && (
+          <div className="mt-3 pt-2.5 border-t border-border/50 space-y-1.5">
+            <p className="text-[10px] text-muted-foreground">支出分类占比</p>
+            {Object.entries(agg.byCategory)
+              .filter(([, v]) => v > 0)
+              .sort((a, b) => b[1] - a[1])
+              .map(([name, value]) => {
+                const colorIdx = stackOrder.indexOf(name);
+                const ratio = agg.expense > 0 ? value / agg.expense : 0;
+                return (
+                  <div key={name} className="flex items-center gap-2">
+                    <span
+                      className="w-2 h-2 rounded-sm flex-shrink-0"
+                      style={{
+                        background: PALETTE[(colorIdx >= 0 ? colorIdx : 0) % PALETTE.length],
+                      }}
+                    />
+                    <span className="text-[11px] text-foreground truncate flex-1 min-w-0">
+                      {name}
+                    </span>
+                    <span className="text-[11px] text-muted-foreground tabular-nums whitespace-nowrap">
+                      ¥{value >= 1000 ? value.toFixed(0) : value.toFixed(2)}
+                    </span>
+                    <span className="text-[10px] text-muted-foreground tabular-nums w-10 text-right whitespace-nowrap">
+                      {(ratio * 100).toFixed(1)}%
+                    </span>
+                  </div>
+                );
+              })}
+          </div>
         )}
         {agg.count === 0 && (
           <p className="text-[11px] text-muted-foreground/70 mt-2 text-center flex items-center justify-center gap-1">
