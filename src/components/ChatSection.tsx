@@ -87,7 +87,7 @@ export function ChatSection({
           智能记账助手
         </h2>
         <p className="text-xs text-muted-foreground mt-0.5">
-          说出或输入你的收支，我来帮你记录 · Speak Chinese or English
+          随口一提，即刻入账 · Speaking or typing, either works
         </p>
       </div>
 
