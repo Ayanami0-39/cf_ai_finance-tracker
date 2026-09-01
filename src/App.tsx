@@ -348,7 +348,7 @@ function App() {
               />
             </TabsContent>
             <TabsContent value="stats" className="flex-1 mt-0 overflow-hidden">
-              <StatsSection expenses={expenses} />
+<StatsSection expenses={expenses} scopeId={activeScope} />
             </TabsContent>
           </Tabs>
         </div>
@@ -382,7 +382,7 @@ function App() {
           </TabsContent>
 
           <TabsContent value="stats" className="flex-1 mt-0 overflow-hidden min-h-0">
-            <StatsSection expenses={expenses} />
+<StatsSection expenses={expenses} scopeId={activeScope} />
           </TabsContent>
         </Tabs>
 

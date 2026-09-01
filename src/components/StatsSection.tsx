@@ -38,6 +38,8 @@ import { motion, AnimatePresence } from "framer-motion";
 
 interface StatsSectionProps {
   expenses: Expense[];
+  /** 当前生效的数据 scope（个人或家庭共享），AI 报告按它取数，保证与页面统计一致 */
+  scopeId?: string;
 }
 
 // ===== 周视图工具 =====
@@ -60,7 +62,7 @@ function addDays(dateStr: string, days: number): string {
   return toDateStr(dt);
 }
 
-export function StatsSection({ expenses }: StatsSectionProps) {
+export function StatsSection({ expenses, scopeId }: StatsSectionProps) {
   const [cursor, setCursor] = useState<string>(() => monthKey(new Date()));
   const [memberFilter, setMemberFilter] = useState<string>("all");
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
@@ -272,7 +274,7 @@ export function StatsSection({ expenses }: StatsSectionProps) {
     setReportText(null);
     try {
       const res = await api.getMonthlyReport(
-        account.scopeId,
+        scopeId || account.scopeId,
         cursor,
         memberFilter
       );
