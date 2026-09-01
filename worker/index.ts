@@ -83,7 +83,23 @@ app.use('/*', async (c, next) => {
 
   const expected = await deriveToken(password);
   if (!verifyRequest(c.req.raw, expected)) {
-    return loginPageResponse();
+    // 浏览器对 manifest 等静态资源的请求可能不带 Cookie（如 PWA 安装流程、
+    // Service Worker 预缓存），若返回 200 的登录页 HTML，浏览器会把它当
+    // manifest 解析而报 "Manifest: Line: 1, column: 1, Syntax error"。
+    // 因此仅页面导航返回登录页，其余静态资源返回 401 JSON。
+    if (c.req.header('Sec-Fetch-Mode') === 'navigate') {
+      return loginPageResponse();
+    }
+    return new Response(
+      JSON.stringify({ ok: false, error: 'Unauthorized' }),
+      {
+        status: 401,
+        headers: {
+          'Content-Type': 'application/json; charset=utf-8',
+          'Cache-Control': 'no-store',
+        },
+      }
+    );
   }
 
   // 鉴权通过后，非 API 请求转发给静态资源服务（页面、JS、CSS 等）

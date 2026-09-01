@@ -2,14 +2,24 @@
  * Fiscus Service Worker：静态资源缓存 + 离线兜壳。
  * 策略：API 请求不缓存；页面导航 network-first；其余同源 GET 资源 stale-while-revalidate。
  */
-const CACHE_NAME = 'fiscus-cache-v2';
+const CACHE_NAME = 'fiscus-cache-v3';
 const PRECACHE_URLS = ['/', '/manifest.webmanifest', '/icon.png'];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches
       .open(CACHE_NAME)
-      .then((cache) => cache.addAll(PRECACHE_URLS))
+      .then((cache) =>
+        // 逐个缓存并容忍单个失败（未登录时静态资源返回 401，
+        // addAll 任一失败会导致整个 SW 安装失败）
+        Promise.allSettled(
+          PRECACHE_URLS.map((u) =>
+            fetch(u).then((res) => {
+              if (res && res.ok) return cache.put(u, res);
+            })
+          )
+        )
+      )
       .then(() => self.skipWaiting())
   );
 });

@@ -996,6 +996,11 @@ function TrendBar({
               value: t.agg.byCategory[c] || 0,
               color: PALETTE[i % PALETTE.length],
             }));
+            const topIdx = (() => {
+              for (let i = stack.length - 1; i >= 0; i--)
+                if (stack[i].value > 0) return i;
+              return -1;
+            })();
             return (
               <button
                 type="button"
@@ -1006,13 +1011,13 @@ function TrendBar({
                 }`}
               >
                 <div className="w-full flex items-end justify-center gap-0.5 flex-1">
-                  {/* 支出：按分类堆叠的多色柱 */}
-                  <div className="w-2.5 md:w-3 h-full flex flex-col justify-end rounded-t overflow-hidden">
-                    {stack.map((seg) =>
+                  {/* 支出：按分类堆叠的多色柱（最顶部段做圆角，与收入柱一致） */}
+                  <div className="w-2.5 md:w-3 h-full flex flex-col justify-end overflow-hidden">
+                    {stack.map((seg, si) =>
                       seg.value > 0 ? (
                         <motion.div
                           key={seg.name}
-                          className="w-full"
+                          className={`w-full ${si === topIdx ? "rounded-t" : ""}`}
                           style={{ background: seg.color, minHeight: 2 }}
                           initial={{ height: 0 }}
                           animate={{
