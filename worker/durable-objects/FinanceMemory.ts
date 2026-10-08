@@ -1,176 +1,192 @@
-import { DurableObject } from "cloudflare:workers";
-import type { Env } from '../types/env';
+import { FinanceMemory as LiveFinanceMemory, d1GetExpenses, d1UpdateExpense, d1SoftDeleteExpense,
+  d1ClearExpenses, d1ImportExpenses, d1AddExpense, writeDoStorageBackup, readDoStorageBackup } from '../recovered/live-backend.mjs';
 import type { Expense } from '../types/expense';
 import type { ChatMessage } from '../types/chat';
+import { d1GetChat, d1AddChat, d1ImportChat, d1ClearChat } from '../db/chat';
+import { migrationComplete, migrateFinanceScope, readLegacyStorage, archiveLegacyObject, verifyLegacyArchive } from '../db/legacy-migration';
 
-export class FinanceMemory extends DurableObject<Env> {
-  constructor(ctx: DurableObjectState, env: Env) {
-    super(ctx, env);
+/** Keep production WebSockets and recurring alarms; all active business records use D1. */
+export class FinanceMemory extends LiveFinanceMemory {
+  private scopeCache?: string;
+
+  private assertAvailable(): void {
+    if (this.env.APP_STORAGE_MODE === 'migration') throw new Error('Storage migration in progress');
   }
 
-  // RPC method: Add expense
-  async addExpense(expense: Expense): Promise<void> {
-    let expenses = await this.ctx.storage.get<Expense[]>('expenses');
-    if (!expenses) {
-      expenses = [];
+  async bindScope(scope: string): Promise<void> {
+    if (this.scopeCache && this.scopeCache !== scope) throw new Error('Scope identity mismatch');
+    this.scopeCache = scope;
+    if (this.env.APP_STORAGE_MODE === 'd1') await this.migrateToD1(scope);
+  }
+
+  override extractScope(): string {
+    return this.scopeCache || this.ctx.id.name || 'default';
+  }
+
+  private async scope(): Promise<string> {
+    if (this.scopeCache) return this.scopeCache;
+    const row = await this.env.DB.prepare('SELECT scope FROM app_legacy_objects WHERE object_id = ?')
+      .bind(this.ctx.id.toString()).first<{ scope: string | null }>();
+    const scope = row?.scope || this.ctx.id.name;
+    if (!scope) throw new Error('Scope identity is unknown; refusing to read/write a default scope');
+    this.scopeCache = scope;
+    return scope;
+  }
+
+  async migrateToD1(scope: string): Promise<void> {
+    await this.ctx.blockConcurrencyWhile(async () => {
+      const objectId = this.ctx.id.toString();
+      const mapping = await this.env.DB.prepare('SELECT scope FROM app_legacy_objects WHERE object_id = ?')
+        .bind(objectId).first<{ scope: string | null }>();
+      if (mapping?.scope && mapping.scope !== scope) throw new Error('Scope identity mismatch');
+      if (!await migrationComplete(this.env.DB, `finance-v1:${objectId}`)) {
+        await migrateFinanceScope(this.env.DB, objectId, scope, await readLegacyStorage(this.ctx.storage));
+      }
+      this.scopeCache = scope;
+    });
+  }
+
+  async verifyArchive(): Promise<boolean> {
+    return this.ctx.blockConcurrencyWhile(() =>
+      verifyLegacyArchive(this.env.DB, this.ctx.id.toString(), this.ctx.storage));
+  }
+
+  async archiveToD1(): Promise<void> {
+    await this.ctx.blockConcurrencyWhile(async () => {
+      const objectId = this.ctx.id.toString();
+      if (await migrationComplete(this.env.DB, `archive-v1:${objectId}`)) return;
+      await archiveLegacyObject(this.env.DB, objectId, await readLegacyStorage(this.ctx.storage));
+    });
+  }
+
+  override async scheduleNextAlarm(): Promise<void> {
+    if (this.env.APP_STORAGE_MODE === 'legacy' || !this.env.APP_STORAGE_MODE) return super.scheduleNextAlarm();
+    // Operational alarm state stays with Cloudflare; never update legacy business keys.
+    await this.ctx.storage.setAlarm(this.getNextOccurrence().getTime());
+  }
+
+  override async alarm(): Promise<void> {
+    if (this.env.APP_STORAGE_MODE === 'migration') {
+      await this.ctx.storage.setAlarm(Date.now() + 60000);
+      return;
     }
-
-    expenses.push(expense);
-    await this.ctx.storage.put('expenses', expenses);
+    if (this.env.APP_STORAGE_MODE === 'd1') await this.scope();
+    await super.alarm();
   }
 
-  // RPC method: Get expenses
-  async getExpenses(): Promise<Expense[]> {
-    let expenses = await this.ctx.storage.get<Expense[]>('expenses');
-    if (!expenses) {
-      expenses = [];
-    }
-
-    return expenses;
+  override async addExpense(expense: Expense): Promise<void> {
+    this.assertAvailable();
+    if (this.env.APP_STORAGE_MODE !== 'd1') return super.addExpense(expense);
+    await d1AddExpense(this.env.DB, await this.scope(), expense);
+  }
+  override async getExpenses(): Promise<Expense[]> {
+    this.assertAvailable();
+    if (this.env.APP_STORAGE_MODE !== 'd1') return super.getExpenses();
+    return d1GetExpenses(this.env.DB, await this.scope());
+  }
+  override async deleteExpense(id: string): Promise<boolean> {
+    this.assertAvailable();
+    if (this.env.APP_STORAGE_MODE !== 'd1') return super.deleteExpense(id);
+    return !!await d1SoftDeleteExpense(this.env.DB, await this.scope(), id);
+  }
+  override async updateExpense(id: string, patch: Partial<Expense>): Promise<Expense | null> {
+    this.assertAvailable();
+    if (this.env.APP_STORAGE_MODE !== 'd1') return super.updateExpense(id, patch);
+    return d1UpdateExpense(this.env.DB, await this.scope(), id, patch);
+  }
+  override async clearExpenses(): Promise<void> {
+    this.assertAvailable();
+    if (this.env.APP_STORAGE_MODE !== 'd1') return super.clearExpenses();
+    await d1ClearExpenses(this.env.DB, await this.scope());
+  }
+  override async importExpenses(expenses: Expense[]): Promise<number> {
+    this.assertAvailable();
+    if (this.env.APP_STORAGE_MODE !== 'd1') return super.importExpenses(expenses);
+    return d1ImportExpenses(this.env.DB, await this.scope(), expenses);
+  }
+  override async getChatMessages(): Promise<ChatMessage[]> {
+    this.assertAvailable();
+    if (this.env.APP_STORAGE_MODE !== 'd1') return super.getChatMessages();
+    return d1GetChat(this.env.DB, await this.scope());
+  }
+  override async addChatMessage(message: ChatMessage): Promise<void> {
+    this.assertAvailable();
+    if (this.env.APP_STORAGE_MODE !== 'd1') return super.addChatMessage(message);
+    await d1AddChat(this.env.DB, await this.scope(), message);
+  }
+  override async importChatMessages(messages: ChatMessage[]): Promise<number> {
+    this.assertAvailable();
+    if (this.env.APP_STORAGE_MODE !== 'd1') return super.importChatMessages(messages);
+    return d1ImportChat(this.env.DB, await this.scope(), messages);
+  }
+  override async clearChatMessages(): Promise<void> {
+    this.assertAvailable();
+    if (this.env.APP_STORAGE_MODE !== 'd1') return super.clearChatMessages();
+    await d1ClearChat(this.env.DB, await this.scope());
   }
 
-  async deleteExpense(expenseId: string): Promise<boolean> {
-    let expenses = await this.ctx.storage.get<Expense[]>('expenses');
-    if (!expenses) {
-      return false;
-    }
-
-    const initialLength = expenses.length;
-    expenses = expenses.filter(e => e.id !== expenseId);
-
-    if (expenses.length === initialLength) {
-      return false;
-    }
-
-    await this.ctx.storage.put('expenses', expenses);
-    return true;
+  private async metadata<T>(key: string, fallback: T): Promise<T> {
+    const row = await this.env.DB.prepare('SELECT value_json FROM app_scope_metadata WHERE scope = ? AND key = ?')
+      .bind(await this.scope(), key).first<{ value_json: string }>();
+    return row ? JSON.parse(row.value_json) as T : fallback;
   }
-
-  // RPC method: Update expense（编辑交易记录：日期、金额、类型、商家、分类等）
-  async updateExpense(
-    expenseId: string,
-    patch: Partial<Omit<Expense, 'id' | 'createdAt' | 'by' | 'byId'>>
-  ): Promise<Expense | null> {
-    const expenses = (await this.ctx.storage.get<Expense[]>('expenses')) || [];
-    const idx = expenses.findIndex(e => e.id === expenseId);
-    if (idx === -1) return null;
-
-    const updated: Expense = { ...expenses[idx], ...patch, id: expenses[idx].id };
-    expenses[idx] = updated;
-    await this.ctx.storage.put('expenses', expenses);
-    return updated;
+  private async setMetadata(key: string, value: unknown): Promise<void> {
+    await this.env.DB.prepare('INSERT INTO app_scope_metadata (scope, key, value_json) VALUES (?, ?, ?) ON CONFLICT (scope, key) DO UPDATE SET value_json = excluded.value_json')
+      .bind(await this.scope(), key, JSON.stringify(value)).run();
   }
-
-  // RPC method: Clear expenses
-  async clearExpenses(): Promise<void> {
-    await this.ctx.storage.delete('expenses');
+  override async getFamilyMembers() {
+    this.assertAvailable();
+    if (this.env.APP_STORAGE_MODE !== 'd1') return super.getFamilyMembers();
+    return this.metadata<Array<{ id: string; name: string; emoji: string }>>('familyMembers', []);
   }
-
-  // ---- Family registry（家庭码 → 成员列表，服务端共享） ----
-
-  async getFamilyMembers(): Promise<Array<{ id: string; name: string; emoji: string }>> {
-    return (await this.ctx.storage.get('familyMembers')) || [];
+  override async setFamilyMembers(members: Array<{ id: string; name: string; emoji: string }>): Promise<void> {
+    this.assertAvailable();
+    if (this.env.APP_STORAGE_MODE !== 'd1') return super.setFamilyMembers(members);
+    await this.setMetadata('familyMembers', members);
   }
-
-  async setFamilyMembers(
-    members: Array<{ id: string; name: string; emoji: string }>
-  ): Promise<void> {
-    await this.ctx.storage.put('familyMembers', members);
+  override async getFamilyOwnerId(): Promise<string | null> {
+    this.assertAvailable();
+    if (this.env.APP_STORAGE_MODE !== 'd1') return super.getFamilyOwnerId();
+    return this.metadata<string | null>('familyOwnerId', null);
   }
-
-  async getFamilyOwnerId(): Promise<string | null> {
-    return (await this.ctx.storage.get<string>('familyOwnerId')) || null;
+  override async setFamilyOwnerId(id: string): Promise<void> {
+    this.assertAvailable();
+    if (this.env.APP_STORAGE_MODE !== 'd1') return super.setFamilyOwnerId(id);
+    await this.setMetadata('familyOwnerId', id);
   }
-
-  async setFamilyOwnerId(ownerId: string): Promise<void> {
-    await this.ctx.storage.put('familyOwnerId', ownerId);
-  }
-
-  async removeFamilyMember(
-    memberId: string
-  ): Promise<Array<{ id: string; name: string; emoji: string }>> {
-    const members =
-      (await this.ctx.storage.get<
-        Array<{ id: string; name: string; emoji: string }>
-      >('familyMembers')) || [];
-    const next = members.filter((m) => m.id !== memberId);
-    if (next.length !== members.length) {
-      await this.ctx.storage.put('familyMembers', next);
-    }
+  override async removeFamilyMember(id: string) {
+    this.assertAvailable();
+    if (this.env.APP_STORAGE_MODE !== 'd1') return super.removeFamilyMember(id);
+    const next = (await this.getFamilyMembers()).filter((member) => member.id !== id);
+    await this.setFamilyMembers(next);
     return next;
   }
-
-  // ---- Bulk import（加入家庭时迁移本机历史数据） ----
-
-  async importExpenses(list: Expense[]): Promise<number> {
-    const existing = (await this.ctx.storage.get<Expense[]>('expenses')) || [];
-    const seen = new Set(existing.map((e) => e.id));
-    let added = 0;
-    for (const e of list) {
-      if (e && e.id && !seen.has(e.id)) {
-        existing.push(e);
-        seen.add(e.id);
-        added++;
-      }
-    }
-    if (added > 0) {
-      existing.sort((a, b) => a.createdAt - b.createdAt);
-      await this.ctx.storage.put('expenses', existing);
-    }
-    return added;
+  override async dumpStorageForBackup(): Promise<Record<string, unknown>> {
+    if (this.env.APP_STORAGE_MODE !== 'd1') return Object.fromEntries(await readLegacyStorage(this.ctx.storage));
+    const scope = await this.scope();
+    const { results } = await this.env.DB.prepare('SELECT key, value_json FROM app_scope_metadata WHERE scope = ?')
+      .bind(scope).all<{ key: string; value_json: string }>();
+    return { ...Object.fromEntries(results.map((row) => [row.key, JSON.parse(row.value_json)])),
+      expenses: await d1GetExpenses(this.env.DB, scope), chatMessages: await d1GetChat(this.env.DB, scope) };
   }
-
-  async importChatMessages(
-    list: ChatMessage[]
-  ): Promise<number> {
-    let existing =
-      (await this.ctx.storage.get<ChatMessage[]>('chatMessages')) || [];
-    const seen = new Set(existing.map((m) => m.id));
-    let added = 0;
-    for (const m of list) {
-      if (m && m.id && !seen.has(m.id)) {
-        existing.push(m);
-        seen.add(m.id);
-        added++;
-      }
-    }
-    if (added > 0) {
-      existing.sort((a, b) => a.timestamp - b.timestamp);
-      if (existing.length > 100) existing = existing.slice(-100);
-      await this.ctx.storage.put('chatMessages', existing);
-    }
-    return added;
+  override async backupKeysToD1(_keys: string[]): Promise<void> {
+    if (this.env.APP_STORAGE_MODE !== 'd1') return super.backupKeysToD1(_keys);
+    await writeDoStorageBackup(this.env.DB, 'FinanceMemory', await this.scope(), await this.dumpStorageForBackup());
   }
-
-  // RPC method: Add chat message
-  async addChatMessage(message: ChatMessage): Promise<void> {
-    let messages = await this.ctx.storage.get<ChatMessage[]>('chatMessages');
-    if (!messages) {
-      messages = [];
+  override async restoreStorageFromBackup(opts?: { keys?: string[] }): Promise<{ restored: string[]; missing: string[] }> {
+    if (this.env.APP_STORAGE_MODE !== 'd1') throw new Error('Restore requires D1 storage mode');
+    const rows = await readDoStorageBackup(this.env.DB, 'FinanceMemory', await this.scope());
+    const wanted = opts?.keys?.length ? new Set(opts.keys) : null;
+    const restored: string[] = [];
+    for (const row of rows) {
+      if (wanted && !wanted.has(row.key)) continue;
+      if (row.key === 'chatMessages') await this.importChatMessages(JSON.parse(row.value) as ChatMessage[]);
+      // Financial records are already authoritative in D1; never revive old/deleted expenses.
+      else if (row.key === 'expenses') continue;
+      else if (await this.metadata(row.key, null) === null) await this.setMetadata(row.key, JSON.parse(row.value));
+      restored.push(row.key);
     }
-
-    messages.push(message);
-
-    // Keep only last 100 messages to prevent storage bloat
-    if (messages.length > 100) {
-      messages = messages.slice(-100);
-    }
-
-    await this.ctx.storage.put('chatMessages', messages);
-  }
-
-  // RPC method: Get chat messages
-  async getChatMessages(): Promise<ChatMessage[]> {
-    let messages = await this.ctx.storage.get<ChatMessage[]>('chatMessages');
-    if (!messages) {
-      messages = [];
-    }
-
-    return messages;
-  }
-
-  // RPC method: Clear chat history
-  async clearChatMessages(): Promise<void> {
-    await this.ctx.storage.delete('chatMessages');
+    this.broadcastChange({ type: 'sync-refresh', by: 'system' });
+    return { restored, missing: wanted ? [...wanted].filter((key) => !restored.includes(key)) : [] };
   }
 }

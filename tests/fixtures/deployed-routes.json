@@ -1,0 +1,290 @@
+[
+  {
+    "method": "DELETE",
+    "path": "/api/accounts/:id"
+  },
+  {
+    "method": "DELETE",
+    "path": "/api/budgets/:id"
+  },
+  {
+    "method": "DELETE",
+    "path": "/api/notifications/:id"
+  },
+  {
+    "method": "DELETE",
+    "path": "/api/recycle-bin/:id"
+  },
+  {
+    "method": "DELETE",
+    "path": "/api/rules/:id"
+  },
+  {
+    "method": "DELETE",
+    "path": "/api/subscriptions/:id"
+  },
+  {
+    "method": "DELETE",
+    "path": "/api/transfers/:id"
+  },
+  {
+    "method": "GET",
+    "path": "/api/account/devices"
+  },
+  {
+    "method": "GET",
+    "path": "/api/account/family/members"
+  },
+  {
+    "method": "GET",
+    "path": "/api/accounts"
+  },
+  {
+    "method": "GET",
+    "path": "/api/accounts/balances"
+  },
+  {
+    "method": "GET",
+    "path": "/api/audit"
+  },
+  {
+    "method": "GET",
+    "path": "/api/audit/export"
+  },
+  {
+    "method": "GET",
+    "path": "/api/audit/retention"
+  },
+  {
+    "method": "GET",
+    "path": "/api/backup/export"
+  },
+  {
+    "method": "GET",
+    "path": "/api/bootstrap"
+  },
+  {
+    "method": "GET",
+    "path": "/api/budgets"
+  },
+  {
+    "method": "GET",
+    "path": "/api/family/my-role"
+  },
+  {
+    "method": "GET",
+    "path": "/api/notifications"
+  },
+  {
+    "method": "GET",
+    "path": "/api/recycle-bin"
+  },
+  {
+    "method": "GET",
+    "path": "/api/restore-points"
+  },
+  {
+    "method": "GET",
+    "path": "/api/rules"
+  },
+  {
+    "method": "GET",
+    "path": "/api/stats/monthly"
+  },
+  {
+    "method": "GET",
+    "path": "/api/subscriptions"
+  },
+  {
+    "method": "GET",
+    "path": "/api/sync-ws"
+  },
+  {
+    "method": "GET",
+    "path": "/api/transfers"
+  },
+  {
+    "method": "PATCH",
+    "path": "/api/accounts/:id"
+  },
+  {
+    "method": "PATCH",
+    "path": "/api/subscriptions/:id"
+  },
+  {
+    "method": "POST",
+    "path": "/api/account/devices/:sessionId/logout"
+  },
+  {
+    "method": "POST",
+    "path": "/api/account/logout"
+  },
+  {
+    "method": "POST",
+    "path": "/api/account/logout-others"
+  },
+  {
+    "method": "POST",
+    "path": "/api/accounts"
+  },
+  {
+    "method": "POST",
+    "path": "/api/audit/retention"
+  },
+  {
+    "method": "POST",
+    "path": "/api/backup/restore"
+  },
+  {
+    "method": "POST",
+    "path": "/api/budgets"
+  },
+  {
+    "method": "POST",
+    "path": "/api/expenses/batch-update"
+  },
+  {
+    "method": "POST",
+    "path": "/api/family/members/:username/role"
+  },
+  {
+    "method": "POST",
+    "path": "/api/import/csv"
+  },
+  {
+    "method": "POST",
+    "path": "/api/internal/do-backup"
+  },
+  {
+    "method": "POST",
+    "path": "/api/notifications/:id/read"
+  },
+  {
+    "method": "POST",
+    "path": "/api/notifications/read-all"
+  },
+  {
+    "method": "POST",
+    "path": "/api/recycle-bin/:id/restore"
+  },
+  {
+    "method": "POST",
+    "path": "/api/report/weekly-insights"
+  },
+  {
+    "method": "POST",
+    "path": "/api/restore-points/:id/rollback"
+  },
+  {
+    "method": "POST",
+    "path": "/api/rules"
+  },
+  {
+    "method": "POST",
+    "path": "/api/subscriptions"
+  },
+  {
+    "method": "POST",
+    "path": "/api/transfers"
+  },
+  {
+    "method": "DELETE",
+    "path": "/api/chat/:userId"
+  },
+  {
+    "method": "DELETE",
+    "path": "/api/expenses/:userId"
+  },
+  {
+    "method": "DELETE",
+    "path": "/api/expenses/:userId/:expenseId"
+  },
+  {
+    "method": "DELETE",
+    "path": "/api/family/members/:username"
+  },
+  {
+    "method": "GET",
+    "path": "/"
+  },
+  {
+    "method": "GET",
+    "path": "/api/account/me"
+  },
+  {
+    "method": "GET",
+    "path": "/api/account/profile/:username"
+  },
+  {
+    "method": "GET",
+    "path": "/api/chat/:userId"
+  },
+  {
+    "method": "GET",
+    "path": "/api/expenses/:userId"
+  },
+  {
+    "method": "GET",
+    "path": "/api/family/mine"
+  },
+  {
+    "method": "PATCH",
+    "path": "/api/account/me"
+  },
+  {
+    "method": "PATCH",
+    "path": "/api/expenses/:userId/:expenseId"
+  },
+  {
+    "method": "POST",
+    "path": "/api/account/login"
+  },
+  {
+    "method": "POST",
+    "path": "/api/account/me/password"
+  },
+  {
+    "method": "POST",
+    "path": "/api/account/register"
+  },
+  {
+    "method": "POST",
+    "path": "/api/chat/:userId"
+  },
+  {
+    "method": "POST",
+    "path": "/api/expense-natural"
+  },
+  {
+    "method": "POST",
+    "path": "/api/expenses"
+  },
+  {
+    "method": "POST",
+    "path": "/api/family/create"
+  },
+  {
+    "method": "POST",
+    "path": "/api/family/join"
+  },
+  {
+    "method": "POST",
+    "path": "/api/family/leave"
+  },
+  {
+    "method": "POST",
+    "path": "/api/family/regenerate-code"
+  },
+  {
+    "method": "POST",
+    "path": "/api/identity/merge"
+  },
+  {
+    "method": "POST",
+    "path": "/api/report"
+  },
+  {
+    "method": "POST",
+    "path": "/api/voice-command"
+  }
+]

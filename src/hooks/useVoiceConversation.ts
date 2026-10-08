@@ -52,27 +52,23 @@ export function useVoiceConversation(
 
   // Query the server with user input using our existing API
   const queryServer = useCallback(async (message: string): Promise<{ response: string; expense?: VoiceExpensePayload }> => {
-    try {
-      const account = getAccount();
-      if (!account) throw new Error('未登录，请先登录账号');
-      const result = await api.sendVoiceCommand({
-        userId: scopeIdRef.current || account.scopeId,
-        input: message,
-        memberName: account.displayName,
-        memberId: account.username,
-      });
+    const account = getAccount();
+    if (!account) throw new Error('未登录，请先登录账号');
+    const result = await api.sendVoiceCommand({
+      userId: scopeIdRef.current || account.scopeId,
+      input: message,
+      memberName: account.displayName,
+      memberId: account.username,
+    });
 
-      if (!result.success) {
-        throw new Error(result.message || 'Server request failed');
-      }
-
-      const response = result.message;
-      const expense = result.data?.expense;
-
-      return { response, expense };
-    } catch (err) {
-      throw err;
+    if (!result.success) {
+      throw new Error(result.message || 'Server request failed');
     }
+
+    const response = result.message;
+    const expense = result.data?.expense;
+
+    return { response, expense };
   }, []);
 
   // Handle AI speaking state changes (echo prevention + auto-resume)

@@ -71,7 +71,7 @@ export async function identifyExpenseToDelete(
       };
     }
 
-  } catch (error) {
+  } catch {
     // Delete identification error
   }
 

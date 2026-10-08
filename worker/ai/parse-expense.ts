@@ -160,7 +160,7 @@ const DATE_CLUE_RE =
 function extractJson(text: string): Record<string, unknown> | null {
   // GLM-4.7-Flash 为 reasoning 模型：先剥离 ɛtoken 与含 think 字样的思考段落，
   // 避免「<}」类思考内容干扰后续的大括号配对扫描
-  let cleaned = text
+  const cleaned = text
     .replace(/ɛ[\s\S]*?ɛ/g, ' ')
     .replace(/ɛ/g, ' ');
 

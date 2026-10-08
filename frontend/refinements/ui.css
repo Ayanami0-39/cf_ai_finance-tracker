@@ -1,0 +1,172 @@
+/* Refine the recovered UI without replacing its components or data contracts. */
+:root {
+  --fiscus-safe-top: env(safe-area-inset-top, 0px);
+  --fiscus-safe-bottom: env(safe-area-inset-bottom, 0px);
+  --fiscus-header-height: calc(56px + var(--fiscus-safe-top));
+  --fiscus-viewport-height: 100vh;
+  --fiscus-viewport-top: 0px;
+  --background: 100 20% 96%;
+  --muted-foreground: 155 10% 38%;
+  --border: 150 14% 86%;
+}
+@supports (height: 100dvh) { :root { --fiscus-viewport-height: 100dvh; } }
+html, body, #root { width: 100%; max-width: 100%; min-height: 0; margin: 0; overflow: hidden; }
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', system-ui, sans-serif; }
+*, *::before, *::after { box-sizing: border-box; }
+.fiscus-app { position: fixed; top: var(--fiscus-viewport-top); inset-inline: 0; height: var(--fiscus-viewport-height); min-height: 0; overflow: hidden; padding-inline: env(safe-area-inset-left, 0px) env(safe-area-inset-right, 0px); }
+.fiscus-app > div, [role='tabpanel'], .fiscus-chat { min-height: 0; min-width: 0; }
+.fiscus-chat { display: flex; flex-direction: column; }
+.fiscus-chat > :first-child, .fiscus-chat > :last-child { flex-shrink: 0; }
+.fiscus-chat > :first-child { padding-top: 22px; padding-bottom: 16px; }
+.fiscus-chat h2 { font-size: 20px; letter-spacing: -.025em; line-height: 1.3; }
+.fiscus-chat h2 + p { line-height: 1.6; max-width: 38ch; margin-top: 5px; }
+.fiscus-composer { padding: 12px 16px 18px !important; }
+.fiscus-composer form { min-height: 56px; border-radius: 20px; box-shadow: 0 4px 24px #18312c08; padding: 6px 10px 6px 16px; }
+.fiscus-composer input { min-width: 0; padding-inline: 0; }
+.fiscus-composer button { flex-shrink: 0; }
+.fiscus-app button, .fiscus-app input, .fiscus-app select { touch-action: manipulation; }
+.fiscus-app button:focus-visible, .fiscus-app input:focus-visible, .fiscus-app select:focus-visible { outline: 2px solid #2f7e70; outline-offset: 3px; }
+.fiscus-app button:disabled { cursor: not-allowed; }
+.fiscus-app [class*='overflow-y-auto'] { overscroll-behavior-y: contain; -webkit-overflow-scrolling: touch; scrollbar-width: thin; }
+.fiscus-app [class*='fixed'][class*='inset-0'] { padding-top: max(16px, var(--fiscus-safe-top)); padding-bottom: max(16px, var(--fiscus-safe-bottom)); }
+.fiscus-app [class*='fixed'][class*='inset-0'] > [class*='max-w-'] { max-height: calc(var(--fiscus-viewport-height) - var(--fiscus-safe-top) - var(--fiscus-safe-bottom) - 32px); overflow-y: auto; overscroll-behavior: contain; }
+.fiscus-app [class*='shadow-lg'][class*='absolute'] { max-width: calc(100vw - 32px); }
+.fiscus-app [class*='text-xs'] { line-height: 1.5; }
+/* A full label may occupy another line, but must never become an ellipsis. */
+.fiscus-app .truncate, .fiscus-app .text-ellipsis, .fiscus-app [class*='line-clamp-'] {
+  white-space: normal; text-overflow: clip; overflow: visible; overflow-wrap: anywhere;
+  -webkit-line-clamp: unset; -webkit-box-orient: initial;
+}
+.fiscus-summary { align-items: stretch; }
+.fiscus-summary > div { min-width: 0; }
+.fiscus-summary > div > div { align-items: flex-start; gap: 6px; }
+.fiscus-summary-amount, .fiscus-stat-amount, .fiscus-entry-amount { min-width: 0; line-height: 1.35; white-space: nowrap !important; overflow-wrap: normal; }
+.fiscus-entry-meta { min-width: 0; white-space: nowrap; }
+.fiscus-entry-row { display: grid; grid-template-columns: minmax(0, 1fr) 78px max-content; align-items: center; gap: .5px 3px; padding: 2.5px 6px; min-height: 48px; }
+.fiscus-entry-details { min-width: 0; display: flex; align-items: center; gap: 10px; }
+.fiscus-entry-details > div:first-child { flex-shrink: 0; }
+.fiscus-entry-details > div:nth-child(2) { min-width: 0; }
+.fiscus-entry-details > div:first-child { grid-column: 1; grid-row: 1 / 3; }
+.fiscus-entry-details > div:nth-child(2) > p:first-child { grid-column: 2; grid-row: 1; }
+.fiscus-entry-details > div:nth-child(2) > p:first-child { font-size: 12.9375px; line-height: 1.2; }
+.fiscus-entry-details > div:first-child > div { width: 36px; height: 36px; border-radius: 12px; }
+.fiscus-entry-details > div:first-child > div > svg { width: 21px; height: 21px; }
+.fiscus-entry-details > div:first-child > span { width: 21px; height: 21px; font-size: 12px; }
+.fiscus-entry-row > .fiscus-entry-amount { grid-column: 2; grid-row: 1; width: 100%; text-align: right; font-size: 15.75px; }
+.fiscus-entry-meta { display: block; white-space: normal; overflow-wrap: anywhere; }
+.fiscus-entry-tools { grid-column: 3; grid-row: 1; display: flex; align-items: center; justify-content: flex-end; gap: 2px; }
+.fiscus-app .fiscus-entry-date { display: block; white-space: nowrap; font-size: 11.25px; line-height: 1.2; }
+.fiscus-app .fiscus-entry-row .fiscus-entry-tools button { min-height: 32px; height: 32px; min-width: 24px; width: 24px; padding: 0; }
+.fiscus-entry-tools > div { margin-right: 0; gap: 1px; }
+.fiscus-app .fiscus-entry-meta { font-size: 13.5px; line-height: 1.25; }
+.fiscus-entry-tools button svg { width: 18px; height: 18px; }
+.fiscus-entry-row { position: relative; }
+.fiscus-entry-confirmation { position: absolute; inset: 0; z-index: 2; display: flex; align-items: center; padding: 4px 12px; background: hsl(var(--card)); box-shadow: inset 3px 0 hsl(var(--destructive)); }
+.fiscus-entry-confirmation > div { display: flex; align-items: center; gap: 8px; width: 100%; }
+.fiscus-entry-tools:has(.fiscus-entry-confirmation)::after { content: ''; width: 49px; height: 32px; flex-shrink: 0; }
+.fiscus-entry-confirmation span { order: -1; flex: 1; font-size: 13px; white-space: normal; }
+.fiscus-app .fiscus-entry-row .fiscus-entry-confirmation button { width: 40px; min-width: 40px; height: 40px; min-height: 40px; }
+.fiscus-chat-jump { flex-shrink: 0; display: flex; justify-content: center; padding: 4px 16px; }
+.fiscus-chat-jump button { min-height: 36px; padding: 6px 16px; border: 1px solid hsl(var(--border)); border-radius: 999px; background: hsl(var(--card)); color: hsl(var(--primary)); font-size: 12px; box-shadow: 0 2px 6px #18312c0a; }
+.fiscus-breakdown-tabs { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 4px; padding: 4px; margin-bottom: 16px; background: hsl(var(--muted)); border-radius: 12px; }
+.fiscus-breakdown-tabs > button { min-width: 0; min-height: 44px; height: auto !important; padding: 8px 10px !important; border-radius: 9px; font-size: clamp(12px, 3.5vw, 14px); font-weight: 600; line-height: 1.4; white-space: normal; overflow-wrap: anywhere; color: hsl(var(--muted-foreground)); }
+.fiscus-breakdown-tabs > button[aria-selected='true'] { color: hsl(var(--foreground)); background: hsl(var(--card)); box-shadow: 0 1px 4px #18312c12; }
+.fiscus-breakdown [hidden] { display: none !important; }
+.fiscus-expense-content > :first-child > h3 { display: none; }
+.fiscus-expense-content > :first-child { justify-content: flex-end; }
+.fiscus-expense-content > :first-child:not(:has(button)) { display: none; }
+.fiscus-income-content > div { background: transparent; border: 0; padding: 0; border-radius: 0; }
+.fiscus-filter { min-width: 0; max-width: 100%; padding: 10px 28px 10px 12px; border: 1px solid hsl(var(--border)); border-radius: 20px; background: hsl(var(--card)); }
+.fiscus-filter-selected { color: hsl(var(--primary)); border-color: hsl(var(--primary) / .4); }
+.fiscus-filter-label { display: block; pointer-events: none; font-size: 13px; line-height: 1.5; white-space: normal; overflow-wrap: anywhere; }
+.fiscus-filter select { position: absolute; inset: 0; width: 100%; height: 100%; max-width: none !important; opacity: 0; }
+.fiscus-filter:focus-within { outline: 2px solid hsl(var(--primary)); outline-offset: 2px; }
+.fiscus-stats-filter > span:first-child:not(.fiscus-filter-label) { display: none; }
+@media (min-width: 768px) {
+  .fiscus-app > .fiscus-desktop { width: min(100%, 1440px); margin-inline: auto; padding: 20px 24px; gap: 24px; }
+  .fiscus-desktop > :first-child { width: 54%; margin-left: 0; flex: 1; }
+  .fiscus-desktop > :last-child { width: 46%; padding: 0; flex: 1; }
+  .fiscus-chat { border: 1px solid hsl(var(--border)); border-radius: 24px; background: #ffffff70; }
+  .fiscus-desktop [role='tablist'] { border-radius: 12px; padding: 4px; height: 40px; }
+  .fiscus-desktop [role='tab'] { height: 32px; border-radius: 9px; padding-inline: 18px; }
+}
+@media (max-width: 767px) {
+  .fiscus-stats-header { flex-wrap: wrap; align-items: flex-start; }
+  .fiscus-stats-header > :first-child { flex: 1 1 140px; }
+  .fiscus-stats-header > label { min-width: 0; max-width: 100%; }
+  .fiscus-stats-filter { max-width: min(260px, 100%); }
+  .fiscus-summary > div { padding: 10px 8px; }
+  .fiscus-summary > div > div { gap: 4px; }
+  .fiscus-summary > div > div > svg { width: 13px; height: 13px; margin-top: 2px; }
+  .fiscus-summary > div > div > p { font-size: clamp(11px, 3vw, 12px); min-width: 0; }
+  .fiscus-summary-amount { font-size: clamp(14px, 4.5vw, 20px); }
+  .fiscus-stat-amount { font-size: clamp(15px, 4.5vw, 18px); }
+  .fiscus-entry-row { padding-inline: 5px; grid-template-columns: minmax(0, 1fr) 78px max-content; gap: .5px 2px; }
+  .fiscus-entry-details > div:first-child > div { width: 33px; height: 33px; }
+  .fiscus-app .fiscus-entry-meta { font-size: clamp(11.25px, 3.2625vw, 13.5px); }
+  .fiscus-entry-row > .fiscus-entry-amount { font-size: clamp(12.375px, 3.6vw, 14.625px); }
+  .fiscus-category-row { flex-wrap: nowrap; gap: 6px; margin-inline: 0; }
+  .fiscus-category-row > span.flex-1 { flex: 1 1 0; }
+  .fiscus-category-row > span:not([role='button']) { font-size: clamp(10px, 2.9vw, 12px); }
+  .fiscus-category-row > span[role='button'] { margin-left: auto; margin-right: 0; }
+  .fiscus-category-row .tabular-nums { white-space: nowrap; overflow-wrap: normal; }
+  .fiscus-income-content .space-y-2 > div { flex-wrap: wrap; }
+  .fiscus-income-content .space-y-2 > div > span:first-child { width: auto; flex: 1 1 100%; }
+  .fiscus-income-content .tabular-nums { white-space: normal; overflow-wrap: anywhere; }
+  .fiscus-app .fiscus-mobile-header { height: var(--fiscus-header-height); padding: var(--fiscus-safe-top) 12px 0; top: var(--fiscus-viewport-top); gap: 8px; background: #fffffff5; border-color: hsl(var(--border)); box-shadow: 0 2px 12px #18312c04; }
+  .fiscus-mobile-header > :first-child { min-width: 0; flex-shrink: 0; }
+  .fiscus-mobile-header > :first-child > button:last-child { display: none; }
+  .fiscus-mobile-header > :last-child { min-width: 0; gap: 4px; }
+  .fiscus-mobile-header button { min-height: 44px; min-width: 40px; padding-inline: 8px; justify-content: center; border-radius: 14px; }
+  .fiscus-mobile-header button[aria-label] { min-width: 44px; }
+  .fiscus-mobile-header [title='Family ledger'] span, .fiscus-mobile-header [title='家庭共享'] span { display: none; }
+  .fiscus-mobile-header button[aria-label='Account menu'] > span:last-child, .fiscus-mobile-header button[aria-label='账号菜单'] > span:last-child { display: none; }
+  .fiscus-mobile { padding-top: var(--fiscus-header-height) !important; }
+  .fiscus-chat > :first-child { padding-top: 20px; }
+  .fiscus-chat h2 { font-size: 19px; }
+  .fiscus-app nav { flex-shrink: 0; padding-top: 7px !important; padding-bottom: max(8px, var(--fiscus-safe-bottom)) !important; background: #fffffff5; }
+  .fiscus-app nav button { min-height: 48px; gap: 3px; position: relative; }
+  .fiscus-app nav button[aria-current='page']::before { content: ''; position: absolute; top: 0; width: 28px; height: 3px; border-radius: 99px; background: hsl(var(--primary)); }
+  .fiscus-app input:not([type='checkbox']):not([type='radio']), .fiscus-app select, .fiscus-app textarea { font-size: 16px !important; min-height: 44px; }
+  .fiscus-app [role='tabpanel'] button, .fiscus-app [class*='fixed'][class*='inset-0'] button { min-height: 40px; }
+  .fiscus-app [role='tabpanel'] [class*='flex-wrap'] { gap: 8px; }
+  .fiscus-app [class*='text-[10px]'], .fiscus-app [class*='text-[11px]'] { font-size: 12px; }
+  .fiscus-app [class*='fixed'][class*='inset-0'] { align-items: center; }
+  :root[data-keyboard-open='true'] .fiscus-app nav { display: none; }
+  :root[data-keyboard-open='true'] .fiscus-composer { padding-bottom: 12px !important; }
+}
+@media (max-width: 359px) {
+  .fiscus-summary > div { padding-inline: 6px; }
+  .fiscus-mobile-header > :first-child > button:first-child > span { display: none; }
+  .fiscus-mobile-header { gap: 4px !important; }
+  .fiscus-mobile-header > :last-child { gap: 2px; }
+  .fiscus-mobile-header button { padding-inline: 6px; min-width: 38px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .fiscus-app *, .fiscus-app *::before, .fiscus-app *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
+}
+/* Keep frequent tasks visible; name the secondary actions in compact menus. */
+.fiscus-action-menu { flex-shrink: 0; }
+.fiscus-action-menu > summary { list-style: none; display: flex; align-items: center; justify-content: center; min-height: 36px; padding: 6px 12px; border: 1px solid hsl(var(--border)); border-radius: 999px; background: hsl(var(--card)); font-size: 12px; cursor: pointer; }
+.fiscus-action-menu > summary::-webkit-details-marker { display: none; }
+.fiscus-record-menu > summary { width: 24px; min-height: 32px; height: 32px; padding: 0; border: 0; border-radius: 6px; background: transparent; font-size: 20px; line-height: 1; }
+.fiscus-menu-panel { position: fixed; z-index: 70; width: 220px; max-width: calc(100vw - 24px); max-height: calc(var(--fiscus-viewport-height) - 24px); overflow-y: auto; padding: 6px; border: 1px solid hsl(var(--border)); border-radius: 14px; background: hsl(var(--card)); box-shadow: 0 8px 30px #18312c24; }
+.fiscus-app .fiscus-menu-panel .fiscus-menu-item { display: flex; align-items: center; gap: 10px; width: 100%; min-width: 0; height: auto; min-height: 40px; padding: 8px 10px; text-align: left; border-radius: 8px; font-size: 12px; }
+.fiscus-menu-item:hover { background: hsl(var(--muted)); }
+.fiscus-menu-item svg { width: 18px; height: 18px; flex-shrink: 0; }
+.fiscus-app summary:focus-visible { outline: 2px solid #2f7e70; outline-offset: 3px; }
+.fiscus-sync-status { color: hsl(var(--muted-foreground)); font-size: 11px; }
+.fiscus-sync-explanation { font-size: 12px; line-height: 1.5; padding: 8px 10px; }
+.fiscus-chat > :first-child { padding-top: 12px; padding-bottom: 8px; }
+.fiscus-insight-sections { display: flex; flex-direction: column; gap: 16px; }
+.fiscus-insight-sections > * { order: 3; margin-top: 0 !important; }
+.fiscus-insight-sections > :first-child { order: 0; }
+.fiscus-insight-sections > :nth-child(2) { order: 2; }
+.fiscus-insight-sections > .fiscus-breakdown { order: 1; }
+.fiscus-insight-tools { order: 4; padding: 12px; border: 1px solid hsl(var(--border)); border-radius: 12px; background: hsl(var(--card)); }
+.fiscus-insight-tools > summary { cursor: pointer; font-size: 13px; font-weight: 600; min-height: 28px; }
+.fiscus-insight-tools-content { display: flex; flex-direction: column; gap: 12px; padding-top: 12px; }

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { motion, type Variants } from "framer-motion";
 import type { Expense } from "@/types";
 import { Input } from "@/components/ui/input";
@@ -68,11 +68,11 @@ export function EditExpenseModal({
   const closeTimer = useRef<number | null>(null);
 
   // 退出动画结束后再真正卸载
-  const finishClose = () => {
+  const finishClose = useCallback(() => {
     if (closeTimer.current !== null) return;
     setClosing(true);
     closeTimer.current = window.setTimeout(onClose, 190);
-  };
+  }, [onClose]);
 
   // 卸载时清理定时器
   useEffect(
@@ -82,10 +82,10 @@ export function EditExpenseModal({
     []
   );
 
-  const requestClose = () => {
+  const requestClose = useCallback(() => {
     if (saving) return;
     finishClose();
-  };
+  }, [saving, finishClose]);
 
   // Esc 关闭
   useEffect(() => {
@@ -94,7 +94,7 @@ export function EditExpenseModal({
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [saving]);
+  }, [requestClose]);
 
   const validateAndBuild = (): Partial<Expense> | null => {
     const num = Number(amount);

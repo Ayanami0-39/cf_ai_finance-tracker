@@ -1,5 +1,7 @@
 import { useCallback, useRef, useState } from 'react';
 
+import type { SpeechRecognition, SpeechRecognitionEvent } from '../speech';
+
 // 语音识别语言：zh-CN 优先中文识别，可通过环境变量切换
 const SPEECH_LANG = import.meta.env.VITE_SPEECH_LANG || 'zh-CN';
 
@@ -8,14 +10,12 @@ export function useSpeechRecognition() {
   const [isListening, setIsListening] = useState(false);
   const [isFinal, setIsFinal] = useState(false);
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const recognitionRef = useRef<any>(null);
+  const recognitionRef = useRef<SpeechRecognition>(null);
   const silenceTimerRef = useRef<NodeJS.Timeout | null>(null);
   const lastSentTranscriptRef = useRef('');
 
   const startListening = useCallback(() => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 
     if (!SpeechRecognition) {
       alert('当前浏览器不支持语音识别 / Your browser does not support speech recognition');
@@ -29,7 +29,7 @@ export function useSpeechRecognition() {
     // 中文优先：zh-CN 识别普通话；需要英文时设置 VITE_SPEECH_LANG=en-US
     recognition.lang = SPEECH_LANG;
 
-    recognition.onresult = (event: any) => {
+    recognition.onresult = (event: SpeechRecognitionEvent) => {
       let fullTranscript = '';
 
       for (let i = 0; i < event.results.length; i++) {

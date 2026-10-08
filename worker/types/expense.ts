@@ -9,6 +9,12 @@ export interface Expense {
   type?: 'expense' | 'income';
   by?: string;
   byId?: string;
+  idempotencyKey?: string;
+  accountId?: string;
+  paidBy?: string;
+  splitWith?: string;
+  dedupHash?: string;
+  deletedAt?: number;
   /** 记录来源：ai = AI 智能解析，fallback = 规则兜底 */
   parsedBy?: 'ai' | 'fallback';
 }

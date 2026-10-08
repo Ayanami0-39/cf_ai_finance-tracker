@@ -1,0 +1,398 @@
+智能记账助手|Your money, made clear
+随口一提，即刻入账 · Speaking or typing, either works|Speak or type. We'll take care of the numbers.
+输入收支，如「午饭花了30块」…|Add an expense, e.g. “Lunch was ¥30”…
+开始对话吧…|Start with your first entry
+试试：「我在星巴克花了35块买拿铁」或「这个月花了多少钱」|Try “Coffee was ¥35” or “How much did I spend this month?”
+↑ 加载更早的消息|↑ Load earlier messages
+加载中…|Loading…
+对话|Chat
+记录|Activity
+统计|Insights
+统计分析 / Statistics|Your spending at a glance
+按月或按周查看收支与分类占比|Explore your income and expenses by month or week
+刷新数据|Refresh
+切换到 English|Switch to English
+切换到中文|Switch to Chinese
+收起|Collapse
+收起顶栏|Collapse header
+展开菜单栏|Open menu
+展开顶栏|Open header
+家庭共享|Family ledger
+家庭共享设置|Family settings
+加入家庭|Join family
+创建 / 加入家庭|Create or join a family
+账号菜单|Account menu
+账号|Account
+编辑资料（昵称/头像）|Edit profile
+退出登录|Sign out
+管理员|Admin
+可记账|Contributor
+只读|Viewer
+离线|Offline
+当前离线，记账将进入待同步队列|You're offline. New entries will sync when you reconnect.
+待同步|Pending sync
+通知|Notifications
+通知中心|Notifications
+全部已读|Mark all as read
+暂无通知|You're all caught up
+删除通知|Delete notification
+刚刚|Just now
+本月结余|Monthly balance
+本月收入|Monthly income
+本月支出|Monthly expenses
+智能记账 · AI Finance Tracker|Your everyday money companion
+Smart Ledger · AI Finance Tracker|Your everyday money companion
+金额|Amount
+类型|Type
+支出|Expense
+收入|Income
+日期|Date
+分类|Category
+商家 / 项目|Merchant / item
+商家|Merchant
+描述|Description
+备注|Note
+记录人|Recorded by
+来源|Source
+商家 / 项目|Merchant / item
+如：星巴克、工资|e.g. coffee shop or salary
+原始输入或补充说明|Original entry or additional details
+资产账户|Payment account
+不关联账户|No linked account
+付款人|Paid by
+用户名|Username
+参与者（逗号分隔）|Participants (comma separated)
+如：coco,coco妈妈|e.g. alex,sam
+取消|Cancel
+保存|Save
+保存中…|Saving…
+关闭|Close
+返回|Back
+编辑交易记录|Edit transaction
+金额必须是大于 0 的数字|Enter an amount greater than zero
+请选择有效日期|Choose a valid date
+保存失败，请重试|Couldn't save. Please try again.
+保存失败|Couldn't save
+已保存修改|Changes saved
+保存失败，已恢复原值|Couldn't save. Your original values were restored.
+网络错误，请重试|Connection error. Please try again.
+网络异常，请稍后重试|Connection error. Please try again shortly.
+搜索商户、备注、金额…|Search merchant, note or amount…
+清除搜索|Clear search
+导出当前筛选结果为 CSV|Export filtered entries as CSV
+导出 CSV|Export CSV
+下载完整备份（账单+订阅+预算+聊天）JSON|Download a JSON backup of entries, subscriptions, budgets and chat
+完整备份|Full backup
+退出批量编辑|Exit bulk edit
+批量编辑（多选后统一改分类/日期）|Select entries to change their category or date
+批量编辑|Bulk edit
+回收站（软删除 30 天内可恢复）|Restore deleted entries within 30 days
+回收站|Recycle bin
+回收站（保留 30 天）|Recycle bin · 30 days
+关闭回收站|Close recycle bin
+回收站是空的|No deleted entries
+从备份文件恢复（按 id 去重合并）|Merge a backup, keeping existing entries
+恢复备份|Restore backup
+导入 CSV（本项目导出格式：日期/类型/分类/商家/描述/金额）|Import CSV: date, type, category, merchant, description and amount
+导入 CSV|Import CSV
+CSV 导入预检结果|CSV import preview
+取消导入|Cancel import
+疑似重复（同日同金额同商家）|Possible duplicates: same date, amount and merchant
+导入中…|Importing…
+跳过重复，导入其余|Skip duplicates and import the rest
+确认导入|Confirm import
+全部导入（含重复）|Import all, including duplicates
+恢复这条记录|Restore entry
+彻底删除（不可恢复）|Delete permanently
+批量设置新分类|Change selected categories
+分类不变|Keep current category
+批量设置新日期|Change selected dates
+应用中…|Applying…
+应用到已选记录|Apply to selected entries
+在下方列表中点击记录左侧的选择框进行勾选|Use the checkboxes to select entries below
+全部分类|All categories
+清除|Clear
+还没有交易记录|Your ledger starts here
+没有符合筛选条件的记录|No matching entries
+在「对话」页语音或文字记一笔吧|Add your first entry in Chat, by voice or text
+试试调整或清除筛选条件|Try adjusting or clearing your filters
+确认删除|Confirm deletion
+取消删除|Cancel deletion
+确认删除？|Delete this entry?
+编辑该记录|Edit entry
+删除该记录|Delete entry
+已删除该记录|Entry deleted
+删除失败，正在恢复列表|Couldn't delete. Restoring your list.
+未知|Unknown
+未知月份|Unknown month
+（本月）|(this month)
+AI 智能解析|Parsed by AI
+规则兜底解析|Parsed by rules
+规则兜底解析（历史消息推断）|Parsed by rules (historical entry)
+AI 智能解析（历史消息推断）|Parsed by AI (historical entry)
+规则|Rules
+自动任务|Automation
+AI 洞察|AI insights
+重试|Try again
+昵称不能为空|Enter a display name
+编辑资料|Edit profile
+昵称|Display name
+私人应用 · 请输入访问密码继续|Private ledger · enter your access password
+访问密码|Access password
+验证中…|Verifying…
+验证访问权限…|Checking access…
+解锁|Unlock
+解锁一次后长期有效，无需重复输入|Unlock once to stay signed in on this device
+登录你的账号，多设备数据同步|Welcome back. Your ledger is ready.
+创建账号，开始多设备记账|Create an account to keep your ledger in sync
+用户名（字母/数字/下划线/中划线）|Username (letters, numbers, underscores or hyphens)
+密码（至少 4 位）|Password (at least 4 characters)
+确认密码|Confirm password
+登录|Sign in
+注册并登录|Create account
+没有账号？创建一个 →|New here? Create an account →
+已有账号？返回登录 →|Already have an account? Sign in →
+同一账号在手机、电脑登录，账单、聊天、昵称头像完全一致|One account. Your entries, chat and profile on every device.
+请输入用户名和密码|Enter your username and password
+两次输入的密码不一致|Your passwords don't match
+操作失败，请重试|Something went wrong. Please try again.
+密码不正确，请重试|Incorrect password. Please try again.
+加载失败|Couldn't load
+创建失败|Couldn't create
+加入失败|Couldn't join
+移除失败|Couldn't remove
+退出失败|Couldn't leave
+角色设置失败|Couldn't update role
+更换失败|Couldn't change code
+请输入 6 位数字家庭码|Enter a 6-digit family code
+已退出并解散家庭|You left and closed the family ledger
+已退出家庭|You left the family ledger
+家庭码已更换，旧码立即失效|New family code saved. The old code no longer works.
+家庭码（家人输入此码加入）|Family code · share it to invite someone
+已复制|Copied
+复制|Copy
+更换家庭码（旧码立即失效）|Change code (the old code will stop working)
+成员（|Members (
+（我）|(you)
+创建者|Owner
+确认移出|Confirm removal
+移出|Remove
+退出后所有权将转移给最早加入的成员|Ownership will pass to the first member who joined
+确定退出这个家庭？|Leave this family ledger?
+确认退出|Confirm leaving
+退出家庭|Leave family
+和家人共用一本账：创建家庭生成家庭码，家人登录后凭码加入。加入后双方的新记录都会进入家庭账本，成员列表显示各自的头像和昵称。|Share a ledger with your family. Create a code and invite someone to join. New entries will appear in your shared ledger.
+创建家庭|Create family
+输入家庭码加入|Join with a family code
+6 位数字家庭码|6-digit family code
+加入|Join
+创建或加入时，你在个人模式下的历史记录会自动并入家庭账本（按记录去重，不会重复）。|Your personal history is merged into the family ledger when you create or join one. Existing entries are deduplicated.
+暂无支出|No expenses yet
+总支出|Total expenses
+成员|Members
+全部成员|All members
+按成员筛选统计|Filter insights by member
+上一期|Previous period
+下一期|Next period
+月|Month
+周|Week
+结余|Balance
+日均支出|Daily average
+环比上周|vs. last week
+环比上月|vs. last month
+统计区间|Period
+同比去年|vs. last year
+分类消费占比|Expenses by category
+清除选中|Clear selection
+本期没有支出记录|No expenses in this period
+查看明细|View details
+近 6 个月趋势|The last six months
+点击柱子查看明细|Select a bar to explore the details
+订阅管理|Subscriptions
+订阅|Subscriptions
+AI 消费报告|AI spending report
+账户资产|Accounts & balances
+现金 / 银行卡 / 支付宝 / 微信 · 余额 = 初始 + 收入 − 支出 + 转账|Track cash, bank accounts and wallets. Balances include your income, expenses and transfers.
+转账|Transfer
+转出账户|From account
+转入账户|To account
+备注（可选）|Note (optional)
+确认转账|Confirm transfer
+账户名（如 招行储蓄卡）|Account name (e.g. everyday account)
+初始余额（可为 0）|Opening balance (can be zero)
+还没有账户。添加后记账可选关联账户，余额自动计算。|Add an account to link your entries and track its balance automatically.
+归档（历史账单保留关联）|Archive (keep historical entries linked)
+现金|Cash
+银行卡|Bank account
+支付宝|Alipay
+微信|WeChat Pay
+其他|Other
+转账失败|Couldn't transfer
+自动分类规则|Category rules
+分类规则|Category rules
+商家/关键字匹配 → 固定分类，优先于 AI 判断（如「滴滴」→ 交通）|Match a merchant or keyword to a category. Your rules take priority over AI suggestions.
+按商家|By merchant
+按关键字|By keyword
+商家（如 滴滴）|Merchant (e.g. Uber)
+关键字（如 加油）|Keyword (e.g. fuel)
+分类（如 Transportation）|Category (e.g. Transportation)
+还没有规则。AI 分类纠正后可沉淀为规则，之后同类记账自动套用。|Add a rule to apply your preferred category to future matching entries.
+商家匹配|Merchant match
+关键字匹配|Keyword match
+预算管理|Budgets
+预算|Budgets
+月度与分类预算 · 超支即时提醒|Set monthly or category budgets and get spending alerts
+本月总预算|Monthly budget
+删除月度预算|Delete monthly budget
+月度预算|Monthly budget
+如 5000|e.g. 5000
+设置|Set
+未设置月度预算|No monthly budget set
+还没有分类预算|No category budgets yet
+选择分类|Choose a category
+请选择分类|Choose a category
+添加|Add
+新增|Add
+修改|Edit
+删除|Delete
+清空|Clear all
+导入|Import
+恢复|Restore
+导出|Export
+自动|Automatic
+角色|Role
+设置失败|Couldn't save settings
+预算金额需为正数|Enter a budget greater than zero
+网络异常|Connection error
+操作审计|Activity log
+谁在何时修改/删除了哪一笔|See who changed your ledger and when
+暂无操作记录|No activity yet
+系统|System
+固定账单自动入账 · 房租 / iCloud / 宽带费|Keep recurring bills on track: rent, subscriptions and utilities
+还没有订阅。试试输入「每月10号记房租3500元」或在下方表单添加。|Add a recurring bill below, or say “Record ¥3,500 rent on the 10th of each month.”
+订阅名称（如房租）|Subscription name (e.g. rent)
+金额（3500）|Amount (e.g. 3500)
+根据本月账单生成一段消费总结与建议|Get a summary and practical suggestions for this month's spending
+生成中…|Generating…
+重新生成|Regenerate
+生成报告|Generate report
+生成本周消费总结与异常洞察（预算超支/大额提醒）|Explore this week's spending, budget alerts and unusual expenses
+本周洞察|Weekly insights
+生成失败，请稍后再试|Couldn't generate a report. Please try again.
+网络异常，生成失败|Connection error. Couldn't generate a report.
+无法确定数据范围，请重试|Couldn't determine the period. Please try again.
+该时间段暂无数据|No entries for this period
+在「对话」页记一笔，统计会自动更新|Add an entry in Chat. Your insights update automatically.
+暂无对比数据|No comparison available yet
+消费商户 Top 5|Top 5 merchants
+收入来源分析|Income sources
+收支分析|Income and expense breakdown
+本期没有收入记录|No income in this period
+支出分类占比|Expenses by category
+该月暂无记录|No entries this month
+该分类在当前区间暂无记录|No entries for this category and period
+其他收入|Other income
+当前浏览器不支持语音识别 / Your browser does not support speech recognition|Your browser doesn't support speech recognition
+未登录，请先登录账号|Sign in to use voice entry
+正在聆听…|Listening…
+思考中…|Thinking…
+正在回复…|Replying…
+出错了|Something went wrong
+准备中…|Getting ready…
+试试说：|Try saying:
+「我在星巴克花了35块买拿铁」|“Coffee at Starbucks was ¥35”
+「这个月花了多少钱」|“How much did I spend this month?”
+「删除上一笔记录」|“Delete my last entry”
+暂停聆听|Pause listening
+开始聆听|Start listening
+结束语音|End voice session
+餐饮|Food & drinks
+交通|Transport
+购物|Shopping
+娱乐|Entertainment
+账单|Bills
+医疗|Health
+教育|Education
+个护|Personal care
+旅行|Travel
+中|中文
+· 共|· Total
+· 已命中|· Matches
+· 已存在|· Already exists
+· 明细|· Details
+· 每月|· Day of month
+· 资料存服务器，所有设备同步|· Synced across all your devices
+个来源|sources
+可用|available
+号|day
+年|year
+月明细|monthly details
+条|entries
+条）|entries)
+次|times
+笔 · ¥|entries · ¥
+笔记录|entries
+行 · ¥|row · ¥
+行 · 有效|rows · Valid
+%，接近预算上限|% · Almost at your budget limit
+CSV 中没有有效数据行（需含「日期」「金额」列）|No valid rows. Your CSV needs date and amount columns.
+CSV 解析失败|Couldn't read this CSV
+↑ 加载更早的记录（还有|↑ Load earlier entries (remaining:
+上期 ¥|Previous period ¥
+你的角色为「只读」，无法修改记录|Your viewer role doesn't allow editing entries.
+你的角色为「只读」，无法记账|Your viewer role doesn't allow adding entries.
+共|Total
+共解析|Parsed
+初始 ¥|Opening ¥
+删除失败|Couldn't delete
+删除失败，请重试|Couldn't delete. Please try again.
+剩余 ¥|Remaining ¥
+占比|Share
+回收站加载失败|Couldn't load deleted entries
+备份导出失败|Couldn't export backup
+备份导出失败，请重试|Couldn't export backup. Please try again.
+备份文件已开始下载|Your backup download has started
+审计导出失败|Couldn't export activity log
+导入失败|Couldn't import
+导入失败，请重试|Couldn't import. Please try again.
+导入预检失败|Couldn't preview this import
+已用|Used
+已超支 ¥|Over budget ¥
+恢复失败|Couldn't restore
+恢复失败，请重试|Couldn't restore. Please try again.
+批量更新失败|Couldn't update selected entries
+批量更新失败，请重试|Couldn't update selected entries. Please try again.
+支出 ¥|Expenses ¥
+无商家|No merchant
+服务器尚未配置 AUTH_PASSWORD（运行 wrangler secret put AUTH_PASSWORD）|Access password isn't configured. Set AUTH_PASSWORD in your Worker settings.
+未选择文件或文件格式错误|Choose a supported backup file
+本期收入共 ¥|Income this period ¥
+每月|Day of each month:
+涨幅最快（+|Largest increase (+
+第|Row
+语音合成失败 / Failed to synthesize speech|Couldn't synthesize speech
+语音生成失败 / Failed to generate speech|Couldn't generate speech
+请先选择要应用的新分类或新日期|Choose a new category or date first
+音频播放失败 / Failed to play audio|Couldn't play audio
+📴 当前离线，已加入待同步队列，联网后自动入账。|You're offline. Your entry is queued and will sync when you reconnect.
+📴 网络异常，已加入待同步队列，联网后自动入账。|Connection error. Your entry is queued and will sync when you reconnect.
+（当前查看）|(selected)
+，来自| from
+，注意控制支出|· Consider reducing your spending
+👥 全部成员|👥 All members
+待同步记录属于其他账户或账本，请切换回原账户或账本同步。|Pending entries belong to another account or ledger. Switch back to sync them.
+同步暂未成功，记录已保留，将自动重试。|Sync failed. Your entries are saved on this device and will retry automatically.
+回到最新消息|Jump to latest
+更多|More
+记录操作|Record actions
+操作|Action
+管理工具|Manage your finances
+记账助手|Record or ask
+在线|Online
+待同步|pending
+此设备没有待同步记录|No pending entries on this device
+离线记录保存在此设备，联网后自动同步|Offline entries stay on this device and sync when connected
+记录保存在此设备，同步成功前请勿清除网站数据。如记录属于其他账本，请切换回原账本。|Entries are saved on this device. Keep website data until they sync. For entries from another ledger, switch back to that ledger.
+重试同步|Retry sync
+同步中…|Syncing…
+搜索记录或输入 YYYY-MM|Search records or YYYY-MM

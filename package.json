@@ -5,11 +5,14 @@
 	"type": "module",
 	"scripts": {
 		"dev": "vite",
-		"build": "tsc -b && vite build",
+		"build": "node scripts/build-ui.mjs && tsc -b && vite build",
 		"lint": "eslint .",
+		"test": "node --test tests/*.test.mjs",
 		"preview": "pnpm run build && vite preview",
-		"deploy": "pnpm run build && wrangler deploy",
-		"cf-typegen": "wrangler types"
+		"deploy": "npm run build && python3 scripts/deploy-backend.py",
+		"cf-typegen": "wrangler types",
+		"pretest": "npm run build",
+		"test:ui": "node scripts/build-ui.mjs && node --test tests/ui/*.test.mjs"
 	},
 	"dependencies": {
 		"@radix-ui/react-slot": "^1.2.4",
@@ -38,6 +41,7 @@
 		"eslint-plugin-react-hooks": "^5.2.0",
 		"eslint-plugin-react-refresh": "^0.4.20",
 		"globals": "^16.3.0",
+		"playwright": "1.64.0",
 		"postcss": "^8.5.6",
 		"tailwindcss": "^3.4.18",
 		"typescript": "~5.8.3",

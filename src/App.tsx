@@ -139,7 +139,7 @@ function App() {
       if (response.success) {
         setExpenses(response.expenses);
       }
-    } catch (error) {
+    } catch {
       // Error loading expenses
     }
   };
@@ -154,7 +154,7 @@ function App() {
           : null;
         setChatHasMore(Boolean(response.hasMore));
       }
-    } catch (error) {
+    } catch {
       // Error loading chat history
     }
   };
@@ -174,7 +174,7 @@ function App() {
         }
         setChatHasMore(Boolean(response.hasMore));
       }
-    } catch (error) {
+    } catch {
       // Error loading older messages
     } finally {
       setLoadingOlder(false);
@@ -185,7 +185,7 @@ function App() {
     if (!activeScope) return;
     try {
       await api.saveChatMessage(activeScope, message);
-    } catch (error) {
+    } catch {
       // Error saving chat message
     }
   };

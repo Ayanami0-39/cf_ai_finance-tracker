@@ -105,7 +105,7 @@ export async function generateMonthlyReport(
 
     const text = stripThinking(extractAiText(response));
     if (text) return text.trim();
-  } catch (error) {
+  } catch {
     // 报表生成失败，回退模板报告
   }
 

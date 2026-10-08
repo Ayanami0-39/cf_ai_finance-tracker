@@ -1,6 +1,6 @@
 /// <reference types="vite/client" />
 
-interface SpeechRecognition extends EventTarget {
+export interface SpeechRecognition extends EventTarget {
   continuous: boolean;
   interimResults: boolean;
   lang: string;
@@ -13,7 +13,7 @@ interface SpeechRecognition extends EventTarget {
   abort(): void;
 }
 
-interface SpeechRecognitionEvent {
+export interface SpeechRecognitionEvent {
   resultIndex: number;
   results: SpeechRecognitionResultList;
 }

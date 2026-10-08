@@ -70,20 +70,14 @@ export async function d1UpdateExpense(
   if (patch.description !== undefined) push('description', patch.description);
   if (sets.length === 0) return null;
 
-  // 先取旧行用于返回完整记录；UPDATE 与 SELECT 并行发起（D1 无事务开销顾虑，changes==0 即不存在）
-  const existing = await db
-    .prepare('SELECT * FROM expenses WHERE scope = ? AND id = ?')
-    .bind(scope, expenseId)
-    .first<Record<string, unknown>>();
-  if (!existing) return null;
-
+  // Return the persisted row atomically, so the response cannot contain pre-edit values.
   vals.push(scope, expenseId);
-  await db
-    .prepare(`UPDATE expenses SET ${sets.join(', ')} WHERE scope = ? AND id = ?`)
+  const updated = await db
+    .prepare(`UPDATE expenses SET ${sets.join(', ')} WHERE scope = ? AND id = ? RETURNING *`)
     .bind(...vals)
-    .run();
+    .first<Record<string, unknown>>();
 
-  return rowToExpense(existing);
+  return updated ? rowToExpense(updated) : null;
 }
 
 /** 按 id 去重导入（家庭合并/数据迁移用），返回新增条数 */

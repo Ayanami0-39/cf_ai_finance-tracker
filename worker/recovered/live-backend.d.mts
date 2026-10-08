@@ -1,0 +1,72 @@
+import { DurableObject } from 'cloudflare:workers';
+import type { Env } from '../types/env';
+import type { Expense } from '../types/expense';
+import type { ChatMessage } from '../types/chat';
+import type { RegistryOperations } from '../db/registry-operations';
+import type { Hono } from 'hono';
+
+type Outcome<K extends keyof RegistryOperations> = RegistryOperations[K] extends (...args: never[]) => infer R ? R : never;
+export class UserRegistry extends DurableObject<Env> {
+  register(...args: Parameters<RegistryOperations['register']>): Outcome<'register'>;
+  verify(...args: Parameters<RegistryOperations['verify']>): Outcome<'verify'>;
+  getProfile(...args: Parameters<RegistryOperations['getProfile']>): Outcome<'getProfile'>;
+  updateProfile(...args: Parameters<RegistryOperations['updateProfile']>): Outcome<'updateProfile'>;
+  changePassword(...args: Parameters<RegistryOperations['changePassword']>): Outcome<'changePassword'>;
+  createFamily(...args: Parameters<RegistryOperations['createFamily']>): Outcome<'createFamily'>;
+  getFamilyByCode(...args: Parameters<RegistryOperations['getFamilyByCode']>): Outcome<'getFamilyByCode'>;
+  joinFamily(...args: Parameters<RegistryOperations['joinFamily']>): Outcome<'joinFamily'>;
+  listFamilyMembers(...args: Parameters<RegistryOperations['listFamilyMembers']>): Outcome<'listFamilyMembers'>;
+  removeFamilyMember(...args: Parameters<RegistryOperations['removeFamilyMember']>): Outcome<'removeFamilyMember'>;
+  leaveFamily(...args: Parameters<RegistryOperations['leaveFamily']>): Outcome<'leaveFamily'>;
+  regenerateFamilyCode(...args: Parameters<RegistryOperations['regenerateFamilyCode']>): Outcome<'regenerateFamilyCode'>;
+  getMemberRole(...args: Parameters<RegistryOperations['getMemberRole']>): Outcome<'getMemberRole'>;
+  setMemberRole(...args: Parameters<RegistryOperations['setMemberRole']>): Outcome<'setMemberRole'>;
+  dumpStorageForBackup(): Promise<Record<string, unknown>>;
+  listBackupScopes(): Promise<string[]>;
+  mirrorToD1(): Promise<void>;
+  restoreStorageFromBackup(opts?: { keys?: string[] }): Promise<{ restored: string[]; missing: string[] }>;
+}
+export class FinanceMemory extends DurableObject<Env> {
+  fetch(request: Request): Promise<Response>;
+  broadcastChange(event: Record<string, unknown>): void;
+  scheduleNextAlarm(): Promise<void>;
+  getNextOccurrence(reference?: Date): Date;
+  alarm(): Promise<void>;
+  extractScope(): string;
+  addExpense(expense: Expense): Promise<void>;
+  getExpenses(): Promise<Expense[]>;
+  deleteExpense(id: string): Promise<boolean>;
+  updateExpense(id: string, patch: Partial<Expense>): Promise<Expense | null>;
+  clearExpenses(): Promise<void>;
+  getFamilyMembers(): Promise<Array<{ id: string; name: string; emoji: string }>>;
+  setFamilyMembers(members: Array<{ id: string; name: string; emoji: string }>): Promise<void>;
+  getFamilyOwnerId(): Promise<string | null>;
+  setFamilyOwnerId(id: string): Promise<void>;
+  removeFamilyMember(id: string): Promise<Array<{ id: string; name: string; emoji: string }>>;
+  importExpenses(expenses: Expense[]): Promise<number>;
+  importChatMessages(messages: ChatMessage[]): Promise<number>;
+  addChatMessage(message: ChatMessage): Promise<void>;
+  getChatMessages(): Promise<ChatMessage[]>;
+  clearChatMessages(): Promise<void>;
+  dumpStorageForBackup(): Promise<Record<string, unknown>>;
+  backupKeysToD1(keys: string[]): Promise<void>;
+  restoreStorageFromBackup(opts?: { keys?: string[] }): Promise<{ restored: string[]; missing: string[] }>;
+}
+export const liveApp: Hono<{ Bindings: Env }>;
+export function d1GetExpenses(db: D1Database, scope: string): Promise<Expense[]>;
+export function d1UpdateExpense(db: D1Database, scope: string, id: string, patch: Partial<Expense>): Promise<Expense | null>;
+export function d1SoftDeleteExpense(db: D1Database, scope: string, id: string): Promise<Expense | null>;
+export function d1ClearExpenses(db: D1Database, scope: string): Promise<void>;
+export function d1ImportExpenses(db: D1Database, scope: string, expenses: Expense[]): Promise<number>;
+export function d1AddExpense(db: D1Database, scope: string, expense: Expense): Promise<Expense | null>;
+export function writeDoStorageBackup(db: D1Database, doClass: string, scope: string, entries: Record<string, unknown>): Promise<{ keys: number; bytes: number }>;
+export function readDoStorageBackup(db: D1Database, doClass: string, scope: string): Promise<Array<{ key: string; value: string }>>;
+export function deleteDoBackupKeys(db: D1Database, doClass: string, scope: string, keys: string[]): Promise<void>;
+export function createSession(db: D1Database, username: string, agent?: string): Promise<{ token: string; sessionId: string; expiresAt: number }>;
+export function verifySession(db: D1Database, token: string): Promise<string | null>;
+export function revokeSession(db: D1Database, username: string, sessionId: string): Promise<boolean>;
+declare const worker: {
+  fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response>;
+  scheduled(controller: ScheduledController, env: Env, ctx?: ExecutionContext): Promise<void>;
+};
+export default worker;

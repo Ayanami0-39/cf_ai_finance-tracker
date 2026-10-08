@@ -1,0 +1,16 @@
+{
+  "origin": "https://bill.cocowb.xyz",
+  "recovered_at": "2026-10-08",
+  "purpose": "Immutable deployed frontend artifacts; recovered React source was not available. Refinements are reproducible in scripts/build-ui.mjs.",
+  "sha256": {
+    "manifest.webmanifest": "84b09a90f2d92e289e426725729344b28161e5e22439eb4ea7a6202e327410d0",
+    "icon.png": "b68382790422158d1e93cc724defd476d51352445cbaf7c303140c10015f54a7",
+    "index.html": "21414d84c69cac5cebb6c0fa699a508c34e83fc758184a8c7474cbf0e792c8bb",
+    "assets/StatsSection-De3T9Jzs.js": "a78a33d9917a7ee8684d49ac4d294a6c8aa77758dc71dceee8be5a28203b3adb",
+    "assets/index-C6-2Jl0I.css": "531434bc506c476ac542e43d279a9ef1b8e90f42f3e4e3fe67c864cf33514038",
+    "assets/FamilySettings-C2h5ERTq.js": "d427d7b40033b0f6eed05be02e17351c95cc488f5d7b0e78968a8551d95083fd",
+    "assets/EditExpenseModal-CS-E8B8m.js": "3564c2ca30ed48b2cbe8f411b7e48345445eb6b6d3faaf4dc7482287bebfb3be",
+    "assets/index-Cyyr79rH.js": "4a1d7fab84ef9dfd58a492f5f5ad9b25842a8c40e3e7a917a1263eb5bd0d7ea7",
+    "assets/VoiceMode-ipbGUSZw.js": "4b8ef292d88f413d01e6b9c3901730c8571cd59735f90fa9e29e8c373cd49000"
+  }
+}

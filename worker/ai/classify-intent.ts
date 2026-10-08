@@ -39,7 +39,7 @@ export async function classifyIntent(
       return parsed.intent as Intent;
     }
 
-  } catch (error) {
+  } catch {
     // Intent classification error
   }
 

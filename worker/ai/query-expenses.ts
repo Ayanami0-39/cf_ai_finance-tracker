@@ -38,7 +38,7 @@ export async function queryExpenses(
       return text.trim();
     }
 
-  } catch (error) {
+  } catch {
     // Query error
   }
 

@@ -11,7 +11,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
 
 	const check = useCallback(async () => {
 		try {
-			let headers: Record<string, string> = {};
+			const headers: Record<string, string> = {};
 			try {
 				const token = localStorage.getItem('auth_token');
 				if (token) headers['Authorization'] = `Bearer ${token}`;
