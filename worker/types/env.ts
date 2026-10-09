@@ -3,6 +3,7 @@ import type { UserRegistry } from '../durable-objects/UserRegistry';
 
 export interface Env {
   AI: Ai;
+  "DEEPSEEK-API-KEY"?: string;
   FINANCE_MEMORY: DurableObjectNamespace<FinanceMemory>;
   USER_REGISTRY: DurableObjectNamespace<UserRegistry>;
   DB: D1Database;

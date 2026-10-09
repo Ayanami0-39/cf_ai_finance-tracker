@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import liveWorker from './recovered/live-backend.mjs';
 import { deriveToken } from './auth';
+import { financeAI } from './ai/provider';
 import type { Env } from './types/env';
 import { FinanceMemory } from './durable-objects/FinanceMemory';
 import { UserRegistry } from './durable-objects/UserRegistry';
@@ -72,7 +73,7 @@ function runtimeEnv(env: Env): Env {
       };
     },
   });
-  return { ...env, FINANCE_MEMORY: bound, ASSETS: assets };
+  return { ...env, AI: financeAI(env), FINANCE_MEMORY: bound, ASSETS: assets };
 }
 
 const admin = new Hono<{ Bindings: Env }>();

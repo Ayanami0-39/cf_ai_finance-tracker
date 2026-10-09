@@ -220,3 +220,31 @@ test('a family viewer cannot create manual entries, while a contributor can', as
   await registry.setMemberRole('owner', 'manual', 'contributor');
   assert.equal((await request('/api/expenses', 'POST', body)).status, 200);
 });
+
+test('the deployed report and chat routes use the DeepSeek adapter while retaining scoped D1 data', async t => {
+  const { env, db, request } = await manualSession(t);
+  assert.equal((await request('/api/expenses', 'POST', manualBody)).status, 200);
+  env['DEEPSEEK-API-KEY'] = 'synthetic-integration-key';
+  t.mock.method(console, 'info', () => {});
+  const calls = [];
+  t.mock.method(globalThis, 'fetch', async (url, options) => {
+    assert.equal(url, 'https://api.deepseek.com/chat/completions');
+    assert.equal(options.headers.Authorization, 'Bearer synthetic-integration-key');
+    const body = JSON.parse(options.body); calls.push(body);
+    assert.equal(body.model, 'deepseek-flash');
+    const system = body.messages[0].content;
+    const content = system.includes('classify user intent') ? '{"intent":"ADD_EXPENSE","confidence":1}' : system.includes('transaction-parsing engine') ? '{"type":"expense","amount":25,"merchant":"Coffee","category":"Food & Dining"}' : 'Synthetic monthly analysis';
+    return Response.json({ choices: [{ finish_reason: 'stop', message: { content } }] });
+  });
+  const report = await (await request('/api/report', 'POST', { userId: 'user_manual', month: '2026-08' })).json();
+  assert.equal(report.report, 'Synthetic monthly analysis');
+  assert.equal((await db.prepare('SELECT COUNT(*) AS count FROM expenses').first()).count, 1, 'analysis never modifies records');
+  const chat = await (await request('/api/voice-command', 'POST', { userId: 'user_manual', input: '今天买咖啡花了25元', idempotencyKey: 'synthetic-chat-key-001' })).json();
+  assert.equal(chat.success, true);
+  assert.equal(chat.data.expense.amount, 25);
+  assert.equal((await db.prepare('SELECT COUNT(*) AS count FROM expenses').first()).count, 2);
+  assert.equal(calls.length, 3, 'one report call and two existing chat calls');
+  assert.equal(JSON.stringify({ report, chat }).includes('synthetic-integration-key'), false);
+  assert.equal((await request('/api/report', 'POST', { userId: 'user_someone_else', month: '2026-08' })).status, 403);
+  assert.equal(calls.length, 3, 'unauthorized scopes never reach either AI provider');
+});

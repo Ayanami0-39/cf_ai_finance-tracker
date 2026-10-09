@@ -332,6 +332,23 @@ account or ledger stay queued, with a message asking the user to switch back;
 they are never reassigned to the current ledger. Do not clear browser website
 data while entries are pending: unsynced entries are not yet in a D1 backup.
 
+The deployed text AI calls use the official DeepSeek chat-completions endpoint when
+Worker secret `DEEPSEEK-API-KEY` is present. The model verified with this account's
+`/models` response is `deepseek-flash`. The key remains server-side; adding it to a
+frontend environment file would expose it. Without the secret, the existing Workers
+AI binding continues to serve these calls. No database migration or new API route is
+required. Requests disable thinking, cap output at 600 tokens (retaining smaller
+classification/query limits), and abort after 12 seconds. Existing local parsing and
+report fallbacks handle provider failures without an additional slow AI request.
+Provider timing logs contain only model, duration and HTTP status.
+
+On October 9, 2026, two synthetic tests per provider using the app's actual prompts
+measured chat classification plus parsing at 1.77–2.15 seconds on DeepSeek versus
+2.51–7.66 seconds on Workers AI; monthly analysis took 1.61–1.65 versus 2.15–7.13
+seconds. These small-sample timings exclude client network and database latency
+and are not a production latency guarantee. No real financial or account data was
+used in the comparison. Temporary benchmark handlers were removed afterward.
+
 Activity includes a month picker and remembers month, category, member and search
 filters separately for each account and ledger. New entry opens a bilingual expense /
 income form with amount, name, date, category and optional note. Submission commits
