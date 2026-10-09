@@ -33,6 +33,7 @@ async function fixture(t, engine) {
   const browser = await engine.launch(engine === chromium && existsSync('/usr/bin/chromium') ? { executablePath: '/usr/bin/chromium', args: ['--no-sandbox'] } : {});
   t.after(async () => { await browser.close(); await new Promise(resolve => server.close(resolve)); });
   async function page(width = 390, height = 844, options = {}) {
+    const selectedAccount = options.account || account;
     const page = await browser.newPage({ viewport: { width, height }, isMobile: width < 768, hasTouch: width < 768, timezoneId: options.timezone || 'UTC', reducedMotion: options.reducedMotion || 'no-preference' });
     await page.addInitScript(({ account, options }) => {
       localStorage.setItem('account_info', JSON.stringify(account)); localStorage.setItem('auth_token', 'synthetic');
@@ -48,14 +49,14 @@ async function fixture(t, engine) {
           close() { this.readyState = 3; }
         };
       }
-    }, { account, options });
+    }, { account: selectedAccount, options });
     page.setDefaultTimeout(5000);
     await page.route('https://**', route => route.abort());
-    if (options.expenses || options.messages || options.cache) {
+    if (options.expenses || options.messages || options.cache || options.account) {
       await page.route('**/api/bootstrap', async route => {
         if (options.failBootstrap) return route.abort();
         if (options.bootstrapDelay) await new Promise(resolve => setTimeout(resolve, options.bootstrapDelay));
-        return route.fulfill({ json: { success: true, account, family: options.family || null, expenses: options.expenses || expenses, chat: { messages: options.messages || messages, hasMore: false } } });
+        return route.fulfill({ json: { success: true, account: selectedAccount, family: options.family || null, expenses: options.expenses || expenses, chat: { messages: options.messages || messages, hasMore: false } } });
       });
       await page.route('**/api/expenses/**', route => route.fulfill({ json: { success: true, expenses: options.expenses || expenses } }));
     }
@@ -189,6 +190,77 @@ for (const engine of [chromium, ...(process.env.TEST_WEBKIT ? [webkit] : [])]) {
       await expenseOnly.getByText('No income in this period', { exact: true }).waitFor();
       await expenseOnly.close();
     });
+    for (const width of [320, 390]) for (const language of ['en', 'zh']) {
+      await t.test(`${width}px ${language}: long content and large amounts remain fully visible`, async () => {
+        const merchant = 'InternationalOnlineStoreWithAnUnbrokenLongName完整商家名称';
+        const category = 'VeryLongCustomCategoryWithoutSpaces完整自定义分类';
+        const text = chatText + ' ' + 'LongUnbrokenMessage'.repeat(12);
+        const page = await open(width, 844, { language,
+          expenses: [{ ...expenses[0], merchant, category, amount: 987654321012.34, by: '很长的家庭成员姓名 LongFamilyMemberName' }],
+          messages: [{ ...messages[0], content: text }],
+        });
+        const overflow = locator => locator.evaluateAll(elements => elements.filter(element => element.getBoundingClientRect().width > 0).flatMap(element => {
+          const rect = element.getBoundingClientRect(), range = document.createRange(); range.selectNodeContents(element);
+          const bad = [...range.getClientRects()].some(part => part.left < rect.left - 1 || part.right > rect.right + 1);
+          return bad || element.scrollWidth > element.clientWidth + 1 || getComputedStyle(element).textOverflow === 'ellipsis' ? [element.textContent] : [];
+        }));
+        assert.deepEqual(await overflow(page.locator('.fiscus-mobile .fiscus-message-bubble p')), []);
+        await page.getByRole('button', { name: language === 'en' ? 'Activity' : '记录', exact: true }).click();
+        await page.locator('.fiscus-mobile .fiscus-entry-row').first().waitFor();
+        await page.waitForFunction(() => [...document.querySelectorAll('.fiscus-mobile .fiscus-entry-amount')].every(element => element.scrollWidth <= element.clientWidth + 1));
+        assert.ok((await page.locator('.fiscus-mobile .fiscus-entry-row').innerText()).includes(merchant));
+        assert.ok((await page.locator('.fiscus-mobile .fiscus-entry-row').innerText()).includes(category));
+        assert.deepEqual(await overflow(page.locator('.fiscus-mobile .fiscus-summary-amount,.fiscus-mobile .fiscus-entry-amount,.fiscus-mobile .fiscus-entry-details p,.fiscus-mobile .fiscus-entry-date')), []);
+        const name = language === 'en' ? 'Insights' : '统计';
+        await page.getByRole('button', { name, exact: true }).click();
+        await page.locator('.fiscus-mobile .fiscus-breakdown').waitFor();
+        assert.deepEqual(await overflow(page.locator('.fiscus-mobile .fiscus-category-row > span,.fiscus-mobile .fiscus-breakdown-tabs button')), []);
+        assert.equal(await page.evaluate(() => document.documentElement.scrollWidth), width);
+        if (process.env.UI_SCREENSHOT_DIR) await page.screenshot({ path: `${process.env.UI_SCREENSHOT_DIR}/${engine.name()}-${width}-${language}-long-content.png` });
+        await page.close();
+      });
+    }
+    await t.test('Insights keeps its compact header and month labels aligned across a year boundary', async () => {
+      const year = new Date().getUTCFullYear();
+      const history = Array.from({ length: 12 }, (_, index) => ({ ...expenses[0], id: 'trend-' + index, date: `${year}-${String(index + 1).padStart(2, '0')}-01` }));
+      for (const width of [320, 390]) {
+        const page = await open(width, 844, { language: 'en', expenses: history });
+        await page.getByRole('button', { name: 'Insights', exact: true }).click();
+        const header = page.locator('.fiscus-mobile .fiscus-stats-header');
+        await header.getByRole('heading', { name: 'Financial overview', exact: true }).waitFor();
+        assert.equal(await header.locator('p').count(), 0);
+        const positions = await header.evaluate(element => {
+          const title = element.querySelector('h2').getBoundingClientRect(), member = element.querySelector('label').getBoundingClientRect();
+          return { titleY: title.y + title.height / 2, memberY: member.y + member.height / 2, titleRight: title.right, memberLeft: member.left };
+        });
+        assert.ok(Math.abs(positions.titleY - positions.memberY) < 2);
+        assert.ok(positions.titleRight < positions.memberLeft);
+        for (let count = new Date().getUTCMonth(); count > 0; count--) await page.getByRole('button', { name: 'Previous period', exact: true }).filter({ visible: true }).click();
+        const chart = page.locator('.fiscus-mobile .fiscus-trend-chart');
+        const axis = chart.locator('.fiscus-trend-axis');
+        await axis.scrollIntoViewIfNeeded();
+        assert.deepEqual(await axis.locator('button > span:first-child').allTextContents(), ['Aug', 'Sep', 'Oct', 'Nov', 'Dec', 'Jan']);
+        assert.equal((await axis.innerText()).match(new RegExp(String(year - 1), 'g')).length, 1);
+        assert.equal((await axis.innerText()).match(new RegExp(String(year), 'g')).length, 1);
+        const geometry = await axis.locator('button').evaluateAll(buttons => buttons.map(button => {
+          const rect = button.getBoundingClientRect(), range = document.createRange(); range.selectNodeContents(button.querySelector('span'));
+          const text = range.getBoundingClientRect();
+          return { center: rect.x + rect.width / 2, left: rect.left, right: rect.right, textLeft: text.left, textRight: text.right };
+        }));
+        for (const label of geometry) assert.ok(label.textLeft >= label.left - 1 && label.textRight <= label.right + 1);
+        const bars = await chart.locator('.fiscus-trend-bars > button').evaluateAll(buttons => buttons.map(button => { const rect = button.getBoundingClientRect(); return rect.x + rect.width / 2; }));
+        for (let index = 0; index < bars.length; index++) assert.ok(Math.abs(bars[index] - geometry[index].center) < 1);
+        const selected = axis.locator('button').first();
+        await selected.click(); assert.equal(await selected.getAttribute('aria-pressed'), 'true');
+        await selected.click(); assert.equal(await selected.getAttribute('aria-pressed'), 'false');
+        await page.getByTitle('Switch to Chinese').filter({ visible: true }).click();
+        await header.getByRole('heading', { name: '财务概览', exact: true }).waitFor();
+        assert.deepEqual(await axis.locator('button > span:first-child').allTextContents(), ['8月', '9月', '10月', '11月', '12月', '1月']);
+        assert.equal(await page.evaluate(() => document.documentElement.scrollWidth), width);
+        if (process.env.UI_SCREENSHOT_DIR) await chart.screenshot({ path: `${process.env.UI_SCREENSHOT_DIR}/${engine.name()}-${width}-trend-axis.png` });
+        await page.close();
+      }
+    });
     async function seedQueue(page, entries) {
       await page.evaluate(async entries => {
         const db = await new Promise((resolve, reject) => {
@@ -306,7 +378,7 @@ for (const engine of [chromium, ...(process.env.TEST_WEBKIT ? [webkit] : [])]) {
       assert.equal(await input.inputValue(), 'My unsaved draft');
       assert.ok((await page.locator('body').innerText()).includes(chatText));
       await page.getByRole('button', { name: 'Activity', exact: true }).click();
-      await page.getByPlaceholder('Search records or YYYY-MM').filter({ visible: true }).waitFor();
+      await page.getByPlaceholder('Search or YYYY-MM').filter({ visible: true }).waitFor();
       assert.ok((await page.locator('body').innerText()).includes('保存'), 'merchant must remain unchanged');
       await page.getByTitle('Switch to Chinese').filter({ visible: true }).click();
       await page.getByRole('button', { name: '统计', exact: true }).waitFor();
@@ -329,6 +401,40 @@ for (const engine of [chromium, ...(process.env.TEST_WEBKIT ? [webkit] : [])]) {
       await page.getByRole('button', { name: 'Insights', exact: true }).waitFor();
       assert.equal(await page.locator('html').getAttribute('lang'), 'en');
       await page.close();
+    });
+    await t.test('account menus fit long identities, support keyboard navigation and preserve drafts', async () => {
+      const identity = { ...account, displayName: '收入 · LongDisplayNameWithoutSpaces完整昵称完整昵称', username: 'long_account_username_without_spaces_1234567890' };
+      for (const [width, height, language] of [[320, 568, 'en'], [390, 844, 'zh'], [667, 375, 'en'], [1440, 900, 'en']]) {
+        const page = await open(width, height, { language, account: identity });
+        const beforeStorage = await page.evaluate(() => ({ account: localStorage.getItem('account_info'), token: localStorage.getItem('account_token') }));
+        const composer = page.locator('.fiscus-composer input').filter({ visible: true });
+        await composer.fill('Unsent draft · 未发送');
+        const trigger = page.getByRole('button', { name: language === 'en' ? 'Account menu' : '账号菜单', exact: true }).filter({ visible: true });
+        await trigger.click();
+        const panel = page.locator('.fiscus-account-panel').filter({ visible: true });
+        await panel.waitFor();
+        assert.equal(await panel.locator('.fiscus-account-name').innerText(), identity.displayName);
+        assert.equal(await panel.locator('.fiscus-account-username').innerText(), '@' + identity.username);
+        assert.equal(await panel.locator('.fiscus-account-action').count(), 4);
+        const bounds = await panel.boundingBox();
+        assert.ok(bounds.x >= 11 && bounds.x + bounds.width <= width - 11);
+        assert.ok(bounds.y >= 11 && bounds.y + bounds.height <= height - 11);
+        assert.ok(await panel.locator('.fiscus-account-name,.fiscus-account-username').evaluateAll(elements => elements.every(element => element.scrollWidth <= element.clientWidth + 1 && getComputedStyle(element).textOverflow !== 'ellipsis')));
+        const actions = panel.locator('.fiscus-account-action');
+        await actions.first().press('ArrowDown'); assert.equal(await actions.nth(1).evaluate(element => element === document.activeElement), true);
+        await actions.nth(1).press('End'); assert.equal(await actions.last().evaluate(element => element === document.activeElement), true);
+        await actions.last().press('Escape'); await panel.waitFor({ state: 'hidden' });
+        assert.equal(await trigger.evaluate(element => element === document.activeElement), true);
+        assert.equal(await composer.inputValue(), 'Unsent draft · 未发送');
+        assert.deepEqual(await page.evaluate(() => ({ account: localStorage.getItem('account_info'), token: localStorage.getItem('account_token') })), beforeStorage);
+        await trigger.click();
+        await page.locator('.fiscus-account-backdrop').filter({ visible: true }).click({ position: { x: 2, y: 2 } });
+        await panel.waitFor({ state: 'hidden' });
+        await trigger.click();
+        if (process.env.UI_SCREENSHOT_DIR) await page.screenshot({ path: `${process.env.UI_SCREENSHOT_DIR}/${engine.name()}-${width}-${language}-account-menu.png` });
+        await actions.first().press('Escape');
+        await page.close();
+      }
     });
     await t.test('profile and family dialogs are reachable and fit the small screen', async () => {
       const page = await open(320, 568, { language: 'en' });
@@ -474,7 +580,7 @@ for (const engine of [chromium, ...(process.env.TEST_WEBKIT ? [webkit] : [])]) {
       const page = await open(390, 844, { language: 'en', expenses: entries });
       await page.getByRole('button', { name: 'Activity', exact: true }).click();
       assert.equal(await page.locator('.fiscus-mobile .fiscus-entry-row').count(), 10);
-      const search = page.getByPlaceholder('Search records or YYYY-MM').filter({ visible: true });
+      const search = page.getByPlaceholder('Search or YYYY-MM').filter({ visible: true });
       await search.fill('2026-08');
       await page.getByText('Preserved August transaction', { exact: true }).filter({ visible: true }).waitFor();
       assert.equal(await page.locator('.fiscus-mobile .fiscus-entry-row').count(), 1);
@@ -488,12 +594,12 @@ for (const engine of [chromium, ...(process.env.TEST_WEBKIT ? [webkit] : [])]) {
       const snapshot = { version: 3, completeLedger: true, savedAt: Date.now() - 15 * 86400000, account, family, expenses: cached, chat: { messages, hasMore: false } };
       const page = await open(390, 844, { language: 'en', cache: snapshot, failBootstrap: true });
       await page.getByRole('button', { name: 'Activity', exact: true }).click();
-      await page.getByPlaceholder('Search records or YYYY-MM').filter({ visible: true }).fill('2026-08');
+      await page.getByPlaceholder('Search or YYYY-MM').filter({ visible: true }).fill('2026-08');
       await page.getByText('Cached entry 0', { exact: true }).filter({ visible: true }).waitFor();
       assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('app_bootstrap_snapshot')).expenses.length), 130);
       await page.reload();
       await page.getByRole('button', { name: 'Activity', exact: true }).click();
-      await page.getByPlaceholder('Search records or YYYY-MM').filter({ visible: true }).fill('2026-08');
+      await page.getByPlaceholder('Search or YYYY-MM').filter({ visible: true }).fill('2026-08');
       await page.getByText('Cached entry 0', { exact: true }).filter({ visible: true }).waitFor();
       assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('app_bootstrap_snapshot')).expenses.length), 130);
       await page.close();

@@ -8,7 +8,11 @@
 对话|Chat
 记录|Activity
 统计|Insights
-统计分析 / Statistics|Your spending at a glance
+财务概览|Financial overview
+账户与共享|Account & sharing
+个人账本|Personal ledger
+家庭账本|Family ledger
+数据|Data
 按月或按周查看收支与分类占比|Explore your income and expenses by month or week
 刷新数据|Refresh
 切换到 English|Switch to English
@@ -395,4 +399,5 @@ CSV 解析失败|Couldn't read this CSV
 记录保存在此设备，同步成功前请勿清除网站数据。如记录属于其他账本，请切换回原账本。|Entries are saved on this device. Keep website data until they sync. For entries from another ledger, switch back to that ledger.
 重试同步|Retry sync
 同步中…|Syncing…
-搜索记录或输入 YYYY-MM|Search records or YYYY-MM
+搜索 / YYYY-MM|Search or YYYY-MM
+记一笔收支|Add an entry

@@ -33,9 +33,27 @@
   const generatedDialogLabels = new WeakSet();
   let previousFocus = null;
   function fitAmounts() {
-    for (const element of document.querySelectorAll('.fiscus-summary-amount,.fiscus-stat-amount,.fiscus-entry-amount,.fiscus-entry-meta')) {
+    for (const row of document.querySelectorAll('.fiscus-category-row')) {
+      const label = row.querySelector('span.flex-1');
+      row.classList.toggle('fiscus-category-long', (label?.textContent.length || 0) > 28);
+    }
+    for (const row of document.querySelectorAll('.fiscus-entry-row')) {
+      const amount = row.querySelector('.fiscus-entry-amount');
+      if (!amount || !row.getBoundingClientRect().width) continue;
+      amount.style.removeProperty('font-size');
+      amount.style.removeProperty('white-space');
+      amount.style.removeProperty('overflow-wrap');
+      const range = document.createRange(); range.selectNodeContents(amount);
+      const base = parseFloat(getComputedStyle(amount).fontSize);
+      const needed = Math.ceil(range.getBoundingClientRect().width * 10 / base + 4);
+      // Ordinary entries keep their compact column; large values get more room.
+      row.style.setProperty('--fiscus-amount-width', `${Math.max(78, needed)}px`);
+    }
+    for (const element of document.querySelectorAll('.fiscus-summary-amount,.fiscus-stat-amount,.fiscus-entry-amount,.fiscus-entry-meta,.fiscus-category-row .tabular-nums')) {
       if (!element.getBoundingClientRect().width) continue;
       element.style.removeProperty('font-size');
+      element.style.removeProperty('white-space');
+      element.style.removeProperty('overflow-wrap');
       const style = getComputedStyle(element), base = parseFloat(style.fontSize);
       const range = document.createRange();
       range.selectNodeContents(element);
@@ -45,6 +63,11 @@
         // Keep the sign, currency and digits on one line as the device narrows.
         const size = Math.max(10, Math.min(base, base * (available - 2) / measured));
         element.style.fontSize = `${size}px`;
+        // Exceptional values still show every digit once shrinking would hurt readability.
+        if (measured * size / base > available) {
+          element.style.setProperty('white-space', 'normal', 'important');
+          element.style.setProperty('overflow-wrap', 'anywhere', 'important');
+        }
       }
     }
     for (const row of document.querySelectorAll('.fiscus-entry-row')) {
@@ -176,6 +199,12 @@
   }
   window.FiscusUI = {
     getLanguage, setLanguage, translate,
+    formatTrendMonth(value) {
+      return new Intl.DateTimeFormat(getLanguage() === 'en' ? 'en-US' : 'zh-CN', { month: 'short', timeZone: 'UTC' }).format(new Date(value + '-01T12:00:00Z'));
+    },
+    formatTrendPeriod(value) {
+      return new Intl.DateTimeFormat(getLanguage() === 'en' ? 'en-US' : 'zh-CN', { month: 'long', year: 'numeric', timeZone: 'UTC' }).format(new Date(value + '-01T12:00:00Z'));
+    },
     formatRecordDate(value) {
       const date = new Date(value);
       if (Number.isNaN(date.getTime())) return String(value || '');

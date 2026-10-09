@@ -46,6 +46,14 @@ function patchJavaScript(name, source) {
     let component = node;
     while (component && !ts.isFunctionDeclaration(component)) component = component.parent;
     const componentName = component?.name?.text;
+    if (name.startsWith('index-') && componentName === 'J2' && ts.isCallExpression(node) && node.arguments[0]?.getText(parsed) === 'v.Fragment' && node.arguments[1]?.getText(parsed).includes('absolute right-0 top-11 w-52 bg-card border rounded-xl shadow-lg z-50 overflow-hidden py-1')) {
+      replace(node, 'v.jsx(FiscusAccountMenu,{account:n,familyCode:l,role:k,onClose:()=>g(false),onEditProfile:i,onOpenFamily:o,onRefresh:c,onLogout:U})');
+      return;
+    }
+    if (name.startsWith('StatsSection-') && componentName === 'xs' && ts.isCallExpression(node) && node.arguments[0]?.getText(parsed) === '"span"' && node.arguments[1]?.getText(parsed).includes('children:[Number(p),"月"]')) { replace(node, 'null'); return; }
+    if (name.startsWith('StatsSection-') && componentName === 'fs' && ts.isCallExpression(node) && node.arguments[0]?.getText(parsed) === '"p"' && node.arguments[1]?.getText(parsed).includes('children:"按月或按周查看收支与分类占比"')) { replace(node, 'null'); return; }
+    // Keep the corner avatar badge, but remove the duplicate emoji beside the author.
+    if (name.startsWith('index-') && componentName === 'W2' && ts.isBinaryExpression(node) && node.getText(parsed) === 'm&&v.jsx("span",{children:m.emoji})') { replace(node, 'null'); return; }
     if (name.startsWith('index-') && componentName === 'ky' && ts.isPropertyAssignment(node) && node.name.getText(parsed) === 'disabled') {
       if (node.initializer.getText(parsed) === 'o') replace(node.initializer, 'false');
       if (node.initializer.getText(parsed) === '!h.trim()||o') { replace(node.initializer, '!h.trim()'); return; }
@@ -100,6 +108,10 @@ function patchJavaScript(name, source) {
       if (heading && name.startsWith('FamilySettings-') && ts.isArrayLiteralExpression(heading.initializer) && heading.initializer.elements.some(e => ts.isStringLiteral(e) && e.text === '家庭共享')) replace(node.arguments[0], '"h2"');
     }
     if (ts.isObjectLiteralExpression(node)) {
+      if (name.startsWith('StatsSection-') && componentName === 'xs') {
+        const classes = node.properties.find(p => ts.isPropertyAssignment(p) && p.name.getText(parsed) === 'className');
+        if (classes?.initializer.getText(parsed).startsWith('`flex-1 flex flex-col items-center gap-1')) insert(node.getStart(parsed) + 1, '"aria-label":window.FiscusUI.formatTrendPeriod(c.key),"aria-pressed":c.key===o,');
+      }
       if (name.startsWith('index-') && componentName === 'ky' && node.properties.some(p => ts.isPropertyAssignment(p) && p.name.getText(parsed) === 'ref' && p.initializer.getText(parsed) === 'R')) {
         insert(node.getStart(parsed) + 1, 'onScroll:()=>{const scroll=R.current;const away=scroll.scrollHeight-scroll.scrollTop-scroll.clientHeight>100;fiscusFollow.current=!away;setFiscusAway(away)},');
       }
@@ -121,6 +133,14 @@ function patchJavaScript(name, source) {
       if (children && hasUserField(children.initializer) && ts.isCallExpression(node.parent) && ts.isStringLiteral(node.parent.arguments[0]) && node.parent.arguments[0].text !== 'svg') tag(node);
     }
     if (ts.isFunctionDeclaration(node) && node.name && node.body) {
+      if (name.startsWith('StatsSection-') && node.name.text === 'xs') {
+        const returned = node.body.statements.find(s => ts.isReturnStatement(s));
+        const object = returned.expression.arguments[1];
+        const children = object.properties.find(p => p.name.getText(parsed) === 'children').initializer;
+        if (!ts.isArrayLiteralExpression(children) || children.elements.length !== 2) throw new Error('Trend chart no longer matches the reviewed baseline');
+        insert(object.getStart(parsed) + 1, 'className:"fiscus-trend-chart",');
+        insert(children.elements[0].end, ',e.jsx("div",{className:"fiscus-trend-axis",children:n.map(c=>e.jsxs("button",{type:"button",onClick:()=>r(c.key),"aria-label":window.FiscusUI.formatTrendPeriod(c.key),"aria-pressed":c.key===o,className:c.key===o?"is-selected":c.key===t?"is-current":"",children:[e.jsx("span",{children:window.FiscusUI.formatTrendMonth(c.key)}),e.jsx("span",{children:c===n[0]||c.key.endsWith("-01")?c.key.slice(0,4):"\\u00a0"})]},c.key))})');
+      }
       if (name.startsWith('index-') && node.name.text === 'Fw') {
         replace(node.body, '{try{const raw=localStorage.getItem(av);if(!raw)return null;const snapshot=JSON.parse(raw);return [2,3].includes(snapshot.version)&&snapshot.account?.username&&Array.isArray(snapshot.expenses)&&Array.isArray(snapshot.chat?.messages)?snapshot:null}catch{return null}}');
         return;
@@ -155,6 +175,8 @@ function patchJavaScript(name, source) {
         const returned = node.body.statements.find(s => ts.isReturnStatement(s));
         const children = returned.expression.arguments[1].properties.find(p => ts.isPropertyAssignment(p) && p.name.getText(parsed) === 'children').initializer;
         if (!ts.isArrayLiteralExpression(children) || children.elements.length !== 3) throw new Error('Chat layout no longer matches the reviewed baseline');
+        replace(children.elements[0], 'null');
+        skipped.add(children.elements[0].pos);
         insert(children.elements[2].getStart(parsed), 'fiscusAway&&v.jsx("div",{className:"fiscus-chat-jump",children:v.jsx("button",{type:"button",onClick:()=>{fiscusFollow.current=true;setFiscusAway(false);k()},children:window.FiscusUI.translate("回到最新消息")})}),');
       }
       if (name.startsWith('index-') && node.name.text === 'rw') {
@@ -241,9 +263,18 @@ function patchJavaScript(name, source) {
       }
     }
     if (ts.isStringLiteral(node)) {
-      if (name.startsWith('index-') && componentName === 'By' && node.text === '搜索商户、备注、金额…') { replace(node, '"搜索记录或输入 YYYY-MM"'); return; }
+      if (name.startsWith('StatsSection-') && componentName === 'xs' && node.text === 'relative h-36 pl-9') { replace(node, JSON.stringify('fiscus-trend-plot ' + node.text)); return; }
+      if (name.startsWith('StatsSection-') && componentName === 'xs' && node.text === 'absolute left-11 right-0 bottom-0 top-0 flex items-end justify-between gap-1.5') { replace(node, JSON.stringify('fiscus-trend-bars ' + node.text)); return; }
+      if (name.startsWith('StatsSection-') && componentName === 'fs' && node.text === '统计分析 / Statistics') { replace(node, '"财务概览"'); return; }
+      if (name.startsWith('index-') && componentName === 'By' && node.text === 'flex flex-col h-full') { replace(node, '"fiscus-activity flex flex-col h-full"'); return; }
+      if (name.startsWith('index-') && componentName === 'By' && node.text.startsWith('flex-1 flex items-center gap-1.5 bg-card border rounded-full')) { replace(node, JSON.stringify('fiscus-search ' + node.text)); return; }
+      if (name.startsWith('index-') && componentName === 'W2' && node.text === 'relative max-w-[85%] md:max-w-[75%]') { replace(node, JSON.stringify('fiscus-message-content ' + node.text)); return; }
+      if (name.startsWith('index-') && componentName === 'By' && node.text === '搜索商户、备注、金额…') { replace(node, '"搜索 / YYYY-MM"'); return; }
+      if (name.startsWith('index-') && componentName === 'ky' && node.text === '输入收支，如「午饭花了30块」…') { replace(node, '"记一笔收支"'); return; }
       if (name.startsWith('index-') && componentName === 'ky' && node.text === '智能记账助手') { replace(node, '"记账助手"'); return; }
       if (name.startsWith('StatsSection-') && componentName === 'fs' && node.text === 'space-y-4') { replace(node, '"fiscus-insight-sections space-y-4"'); return; }
+      if (name.startsWith('StatsSection-') && componentName === 'fs' && node.text === 'text-xs text-muted-foreground tabular-nums whitespace-nowrap flex-shrink-0') { replace(node, JSON.stringify('fiscus-category-amount ' + node.text)); return; }
+      if (name.startsWith('StatsSection-') && componentName === 'fs' && node.text === 'text-xs text-muted-foreground/70 tabular-nums w-12 text-right flex-shrink-0') { replace(node, JSON.stringify('fiscus-category-share ' + node.text)); return; }
       if (name.startsWith('index-') && componentName === 'rw' && node.text.startsWith('flex items-center gap-3 py-3 px-4 border-b')) { replace(node, JSON.stringify('fiscus-entry-row ' + node.text)); return; }
       if (name.startsWith('index-') && componentName === 'rw' && node.text === 'text-right flex-shrink-0') { replace(node, JSON.stringify('fiscus-entry-total ' + node.text)); return; }
       if (name.startsWith('StatsSection-') && componentName === 'fs' && node.text === 'flex items-center justify-between mb-4 gap-2') { replace(node, JSON.stringify('fiscus-stats-header ' + node.text)); return; }
@@ -265,6 +296,8 @@ function patchJavaScript(name, source) {
       else if (node.text.startsWith('assets/')) replace(node, JSON.stringify(base.slice(1) + '/' + node.text));
       else if (node.text === 'zh-CN' && ts.isCallExpression(node.parent) && /toLocale(?:Date|Time)String$/.test(node.parent.expression.getText(parsed))) replace(node, 'window.FiscusUI.locale()');
     }
+    if (name.startsWith('index-') && componentName === 'W2' && ts.isTemplateExpression(node) && node.getText(parsed).startsWith('`rounded-xl px-4 py-2.5')) insert(node.getStart(parsed) + 1, 'fiscus-message-bubble ');
+    if (name.startsWith('StatsSection-') && componentName === 'fs' && ts.isTemplateExpression(node) && node.getText(parsed).startsWith('`inline-flex items-center gap-0.5 text-[10px] tabular-nums')) insert(node.getStart(parsed) + 1, 'fiscus-category-trend ');
     if (name.startsWith('index-') && componentName === 'rw' && ts.isTemplateExpression(node) && node.getText(parsed).startsWith('`text-sm font-semibold tabular-nums')) insert(node.getStart(parsed) + 1, 'fiscus-entry-amount ');
     if (name.startsWith('StatsSection-') && componentName === 'le' && ts.isTemplateExpression(node) && node.getText(parsed).startsWith('`text-base md:text-lg font-semibold truncate')) insert(node.getStart(parsed) + 1, 'fiscus-stat-amount ');
     ts.forEachChild(node, visit);
