@@ -46,6 +46,11 @@ function patchJavaScript(name, source) {
     let component = node;
     while (component && !ts.isFunctionDeclaration(component)) component = component.parent;
     const componentName = component?.name?.text;
+    if (name.startsWith('index-') && componentName === 'ky' && ts.isPropertyAssignment(node) && node.name.getText(parsed) === 'disabled') {
+      if (node.initializer.getText(parsed) === 'o') replace(node.initializer, 'false');
+      if (node.initializer.getText(parsed) === '!h.trim()||o') { replace(node.initializer, '!h.trim()'); return; }
+    }
+    if (name.startsWith('index-') && componentName === 'ky' && ts.isBinaryExpression(node) && node.getText(parsed) === '!h.trim()||o') { replace(node, '!h.trim()'); return; }
     if (name.startsWith('index-') && componentName === 'By' && ts.isTemplateExpression(node) && node.getText(parsed).startsWith('`${et.merchant') && node.getText(parsed).includes('et.amount')) insert(node.getStart(parsed) + 1, '${et.date||""} ');
     if (name.startsWith('index-') && componentName === 'ky' && ts.isCallExpression(node) && node.arguments[0]?.getText(parsed) === '"p"' && node.arguments[1]?.getText(parsed).includes('随口一提，即刻入账')) insert(node.getStart(parsed), 'l.length===0&&');
     if (name.startsWith('index-') && componentName === 'J2' && ts.isVariableDeclaration(node) && node.name.getText(parsed) === 'X') {
@@ -196,7 +201,7 @@ function patchJavaScript(name, source) {
         return;
       }
       if (name.startsWith('index-') && node.name.text === 'Z2') replace(node.body, '{return window.FiscusUI.getLanguage()}');
-      if (name.startsWith('index-') && node.name.text === 'XM') insert(node.body.getStart(parsed) + 1, '_f();');
+      if (name.startsWith('index-') && node.name.text === 'XM') insert(node.body.getStart(parsed) + 1, '_f();const fiscusPendingReplies=T.useRef(0);');
       if (name.startsWith('index-') && node.name.text === 'Q2') {
         const last = node.body.statements.find(s => ts.isReturnStatement(s));
         insert(last.getStart(parsed), 'T.useEffect(()=>window.FiscusUI.subscribeLanguage(()=>l(window.FiscusUI.getLanguage())),[]);');
@@ -212,6 +217,10 @@ function patchJavaScript(name, source) {
     }
     let owner = node.parent;
     while (owner && !(ts.isVariableDeclaration(owner) && owner.name.getText(parsed) === 'dn')) owner = owner.parent;
+    if (name.startsWith('index-') && owner && ts.isCallExpression(node) && node.expression.getText(parsed) === 'd') {
+      if (node.arguments[0]?.getText(parsed) === '!0') { replace(node, '(fiscusPendingReplies.current++,d(true))'); return; }
+      if (node.arguments[0]?.getText(parsed) === '!1') { replace(node, '(fiscusPendingReplies.current=Math.max(0,fiscusPendingReplies.current-1),d(fiscusPendingReplies.current>0))'); return; }
+    }
     if (name.startsWith('index-') && owner && ts.isCallExpression(node) && ['n0','Kt.sendVoiceCommand'].includes(node.expression.getText(parsed))) {
       const object = node.arguments[node.expression.getText(parsed) === 'n0' ? 1 : 0];
       insert(object.getStart(parsed) + 1, 'idempotencyKey:mutationId,');

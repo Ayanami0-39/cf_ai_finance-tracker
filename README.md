@@ -350,6 +350,10 @@ messages. A localized **Jump to latest** button returns to the newest messages;
 opening the chat and sending a message still follow the conversation. Loading
 older history retains the existing scroll position. Reduced-motion preferences
 disable smooth chat scrolling and shorten CSS animations/transitions.
+The composer stays editable while AI is responding and accepts additional
+messages. Each request retains a separate mutation ID; the pending-reply
+indicator remains active until every outstanding request finishes. Replies
+appear in completion order, and subsequent unsent drafts are preserved.
 
 Activity deletion uses an inline confirmation within the original row, preserving
 its size on narrow screens. Cancel receives initial keyboard focus, Escape cancels,

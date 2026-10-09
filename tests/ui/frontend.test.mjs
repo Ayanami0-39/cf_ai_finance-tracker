@@ -418,6 +418,34 @@ for (const engine of [chromium, ...(process.env.TEST_WEBKIT ? [webkit] : [])]) {
       });
       await page.close();
     });
+    await t.test('messages can be sent while AI replies are pending without losing drafts or request IDs', async () => {
+      const page = await open(390, 844, { language: 'en' });
+      const requests = [], releases = [];
+      await page.route('**/api/voice-command', async route => {
+        const index = requests.length;
+        requests.push(route.request().postDataJSON());
+        await new Promise(resolve => { releases[index] = resolve; });
+        await route.fulfill({ json: { success: true, message: `Synthetic reply ${index}` } });
+      });
+      const input = page.locator('.fiscus-mobile .fiscus-composer input');
+      await input.fill('Lunch 30'); await input.press('Enter');
+      await page.waitForFunction(() => document.querySelectorAll('.fiscus-mobile .animate-bounce').length === 3);
+      assert.equal(await input.isEnabled(), true);
+      await input.fill('Coffee 20'); await input.press('Enter');
+      await page.getByText('Coffee 20', { exact: true }).filter({ visible: true }).waitFor();
+      while (requests.length < 2) await page.waitForTimeout(20);
+      await input.fill('My next unsent draft');
+      releases[1]();
+      await page.getByText('Synthetic reply 1', { exact: true }).filter({ visible: true }).waitFor();
+      assert.equal(await page.locator('.fiscus-mobile .animate-bounce').count(), 3, 'another reply is still pending');
+      releases[0]();
+      await page.getByText('Synthetic reply 0', { exact: true }).filter({ visible: true }).waitFor();
+      await page.waitForFunction(() => document.querySelectorAll('.fiscus-mobile .animate-bounce').length === 0);
+      assert.equal(await input.inputValue(), 'My next unsent draft');
+      assert.notEqual(requests[0].idempotencyKey, requests[1].idempotencyKey);
+      assert.equal(requests.length, 2);
+      await page.close();
+    });
     await t.test('secondary activity actions stay accessible in More and record menus', async () => {
       const page = await open(320, 568, { language: 'en' });
       await page.getByRole('button', { name: 'Activity', exact: true }).click();
