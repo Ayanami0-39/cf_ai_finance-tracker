@@ -12,6 +12,7 @@ const translations = Object.fromEntries((await readFile(new URL('translations.tx
 const css = await readFile(new URL('ui.css', refinements), 'utf8');
 const statsTabs = await readFile(new URL('stats-tabs.js', refinements), 'utf8');
 const actionMenu = await readFile(new URL('action-menu.js', refinements), 'utf8');
+const entryTools = await readFile(new URL('entry-tools.js', refinements), 'utf8');
 const bridge = (await readFile(new URL('ui.js', refinements), 'utf8')).replace('__FISCUS_TRANSLATIONS__', JSON.stringify(translations));
 const provenance = JSON.parse(await readFile(new URL('provenance.json', recovered), 'utf8'));
 for (const [name, expected] of Object.entries(provenance.sha256)) {
@@ -20,12 +21,12 @@ for (const [name, expected] of Object.entries(provenance.sha256)) {
 }
 const files = await readdir(new URL('assets/', recovered));
 const sources = Object.fromEntries(await Promise.all(files.map(async name => [name, await readFile(new URL('assets/' + name, recovered), 'utf8')])));
-const version = createHash('sha256').update(JSON.stringify(sources) + css + bridge + statsTabs + actionMenu + await readFile(new URL(import.meta.url))).digest('hex').slice(0, 12);
+const version = createHash('sha256').update(JSON.stringify(sources) + css + bridge + statsTabs + actionMenu + entryTools + await readFile(new URL(import.meta.url))).digest('hex').slice(0, 12);
 const base = '/ui/' + version;
 
 function patchJavaScript(name, source) {
   if (name.startsWith('StatsSection-')) source += '\n' + statsTabs;
-  if (name.startsWith('index-')) source += '\n' + actionMenu;
+  if (name.startsWith('index-')) source += '\n' + actionMenu + '\n' + entryTools;
   const parsed = ts.createSourceFile(name, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
   const edits = [];
   function insert(position, content) { edits.push({ start: position, end: position, content }); }
@@ -46,6 +47,25 @@ function patchJavaScript(name, source) {
     let component = node;
     while (component && !ts.isFunctionDeclaration(component)) component = component.parent;
     const componentName = component?.name?.text;
+    if (name.startsWith('index-') && componentName === 'By' && ts.isVariableDeclaration(node)) {
+      const binding = node.name.getText(parsed);
+      const stored = { '[m,y]': 'category', '[h,g]': 'member', '[x,S]': 'query' }[binding];
+      if (stored && node.initializer?.getText(parsed).startsWith('T.useState(')) { replace(node.initializer, `T.useState(()=>FiscusLedger.loadFilters(c).${stored})`); return; }
+      if (binding === 'Q') { replace(node.initializer, 'T.useMemo(()=>{const query=x.trim().toLowerCase();return [...n].sort((a,b)=>b.createdAt-a.createdAt).filter(entry=>(fiscusMonth==="all"||entry.date?.slice(0,7)===fiscusMonth)&&(m==="all"||entry.category===m)&&(h==="all"||entry.byId===h||(!entry.byId&&entry.by===h))&&(!query||`${entry.date||""} ${entry.merchant||""} ${entry.description||""} ${entry.category} ${f(entry.category)} ${entry.amount}`.toLowerCase().includes(query)))},[n,m,h,x,f,fiscusMonth])'); return; }
+      if (binding === 'q') { replace(node.initializer, 'fiscusMonth!=="all"||m!=="all"||h!=="all"||x.trim()!==""'); return; }
+      if (binding === 'rt') { replace(node.initializer.body, '{setFiscusMonth("all");y("all");g("all");S("")}'); return; }
+    }
+    if (name.startsWith('index-') && componentName === 'By' && ts.isCallExpression(node) && node.expression.getText(parsed) === 'T.useEffect' && node.arguments[0]?.getText(parsed).includes('U(C)') && node.arguments[1]?.getText(parsed) === '[m,h,x]') { insert(node.arguments[1].end - 1, ',fiscusMonth'); }
+    if (name.startsWith('index-') && componentName === 'XM' && ts.isCallExpression(node) && node.expression.getText(parsed) === 'o') {
+      if (node.arguments[0]?.getText(parsed) === '$.expenses') insert(node.getStart(parsed), 'fiscusLedgerReady.current=$.family?.scopeId||$.account.scopeId,');
+      if (node.arguments[0]?.getText(parsed) === 'Bt.expenses??[]') insert(node.getStart(parsed), 'fiscusLedgerReady.current=Bt.family?.scopeId||Bt.account.scopeId,');
+    }
+    if (name.startsWith('index-') && componentName === 'XM' && ts.isVariableDeclaration(node) && node.name.getText(parsed) === 'I' && node.initializer?.getText(parsed).includes('Kt.deleteExpense')) {
+      replace(node.initializer.body, '{if(!dt||Ht)return;const scopeId=dt,username=h?.username,expense=l.find(entry=>entry.id===tt);if(!expense)return;o(entries=>entries.filter(entry=>entry.id!==tt));try{await Kt.deleteExpense(scopeId,tt);setFiscusUndo(items=>[...items.filter(item=>item.expiresAt>Date.now()),{id:tt,expense,scopeId,username,token:crypto.randomUUID(),status:"ready",expiresAt:Date.now()+10000}])}catch{f("删除失败，正在恢复列表","error");if(fiscusContext.current?.scopeId===scopeId&&fiscusContext.current?.username===username)te(scopeId)}}'); return;
+    }
+    if (name.startsWith('index-') && componentName === 'XM' && ts.isVariableDeclaration(node) && node.name.getText(parsed) === 'te' && ts.isArrowFunction(node.initializer)) {
+      replace(node.initializer.body, '{const username=h?.username;try{const result=await Kt.getExpenses(tt);if(result.success&&fiscusContext.current?.scopeId===tt&&fiscusContext.current?.username===username){fiscusLedgerReady.current=tt;o(result.expenses)}}catch{}}'); return;
+    }
     if (name.startsWith('index-') && componentName === 'J2' && ts.isCallExpression(node) && node.arguments[0]?.getText(parsed) === 'v.Fragment' && node.arguments[1]?.getText(parsed).includes('absolute right-0 top-11 w-52 bg-card border rounded-xl shadow-lg z-50 overflow-hidden py-1')) {
       replace(node, 'v.jsx(FiscusAccountMenu,{account:n,familyCode:l,role:k,onClose:()=>g(false),onEditProfile:i,onOpenFamily:o,onRefresh:c,onLogout:U})');
       return;
@@ -63,7 +83,7 @@ function patchJavaScript(name, source) {
     if (name.startsWith('index-') && componentName === 'ky' && ts.isCallExpression(node) && node.arguments[0]?.getText(parsed) === '"p"' && node.arguments[1]?.getText(parsed).includes('随口一提，即刻入账')) insert(node.getStart(parsed), 'l.length===0&&');
     if (name.startsWith('index-') && componentName === 'J2' && ts.isVariableDeclaration(node) && node.name.getText(parsed) === 'X') {
       const children = node.initializer.arguments[1].properties.find(p => p.name.getText(parsed) === 'children').initializer;
-      replace(children.elements[0], 'v.jsx(FiscusSyncStatus,{online:f,pending:d})');
+      replace(children.elements[0], 'v.jsx(FiscusSyncStatus,{online:f,pending:d,account:n,scopeId:y})');
       replace(children.elements[1], 'null');
       skipped.add(children.elements[0].pos); skipped.add(children.elements[1].pos);
     }
@@ -108,6 +128,7 @@ function patchJavaScript(name, source) {
       if (heading && name.startsWith('FamilySettings-') && ts.isArrayLiteralExpression(heading.initializer) && heading.initializer.elements.some(e => ts.isStringLiteral(e) && e.text === '家庭共享')) replace(node.arguments[0], '"h2"');
     }
     if (ts.isObjectLiteralExpression(node)) {
+      if (name.startsWith('index-') && componentName === 'XM' && ts.isCallExpression(node.parent) && node.parent.arguments[0]?.getText(parsed) === 'By') insert(node.getStart(parsed) + 1, 'key:dt+":"+h.username,');
       if (name.startsWith('StatsSection-') && componentName === 'xs') {
         const classes = node.properties.find(p => ts.isPropertyAssignment(p) && p.name.getText(parsed) === 'className');
         if (classes?.initializer.getText(parsed).startsWith('`flex-1 flex flex-col items-center gap-1')) insert(node.getStart(parsed) + 1, '"aria-label":window.FiscusUI.formatTrendPeriod(c.key),"aria-pressed":c.key===o,');
@@ -163,12 +184,16 @@ function patchJavaScript(name, source) {
         insert(sections.elements[11].end, ']})]})');
       }
       if (name.startsWith('index-') && node.name.text === 'By') {
+        insert(node.body.getStart(parsed) + 1, 'const [fiscusMonth,setFiscusMonth]=T.useState(()=>FiscusLedger.loadFilters(c).month);');
+        insert(node.body.statements[0].end, 'T.useEffect(()=>FiscusLedger.saveFilters(c,{category:m,member:h,query:x,month:fiscusMonth}),[c,m,h,x,fiscusMonth]);');
         const returned = node.body.statements.find(s => ts.isReturnStatement(s));
         const childrenOf = object => object.properties.find(p => p.name.getText(parsed) === 'children').initializer;
         const controls = childrenOf(childrenOf(childrenOf(returned.expression.arguments[1]).elements[1].arguments[1]).elements[0].arguments[1]);
         if (controls.elements.length !== 4) throw new Error('Activity actions no longer match the reviewed baseline');
         insert(controls.elements[1].getStart(parsed), 'v.jsxs(FiscusActionMenu,{children:[');
         insert(controls.elements[3].end, ']})');
+        const sections = childrenOf(childrenOf(returned.expression.arguments[1]).elements[1].arguments[1]);
+        insert(sections.end - 1, ',v.jsx(FiscusActivityTools,{expenses:n,scopeId:c,month:fiscusMonth,onMonthChange:setFiscusMonth,canWrite:!!i,onSaved:expense=>{setFiscusMonth(expense.date.slice(0,7));y("all");g("all");S("")}})');
       }
       if (name.startsWith('index-') && node.name.text === 'ky') {
         insert(node.body.getStart(parsed) + 1, 'const fiscusFollow=T.useRef(true),[fiscusAway,setFiscusAway]=T.useState(false);');
@@ -218,12 +243,23 @@ function patchJavaScript(name, source) {
         return;
       }
       if (name.startsWith('index-') && node.name.text === 'HM') {
-        const body = node.body.getText(parsed).replaceAll('Yi', 'active');
-        replace(node.body, '{if(window.__fiscusSyncFlight)return window.__fiscusSyncFlight;const active=Yi;const run=(async()=>'+body+')();window.__fiscusSyncFlight=run;try{return await run}finally{window.__fiscusSyncFlight=null}}');
+        replace(node.body, '{if(window.__fiscusSyncFlight)return window.__fiscusSyncFlight;const active=Yi;const run=(async()=>{let flushed=0,failed=0,skipped=0;if(!jf())return{flushed,failed,skipped};for(const entry of await FiscusLedger.readQueue()){if(!active?.scopeId||!active?.username||(entry.username&&entry.username!==active.username)||(entry.scopeId&&entry.scopeId!==active.scopeId)){skipped++;continue}try{await kM({...entry,syncState:"syncing",lastAttemptAt:Date.now()});const result=entry.kind==="manual"?await FiscusLedger.sendManual({...entry.expense,userId:active.scopeId,idempotencyKey:entry.clientMutationId}):await n({userId:active.scopeId,input:entry.input,memberName:entry.memberName,memberId:entry.memberId,idempotencyKey:entry.clientMutationId});if((result?.success||result?.duplicate)&&(entry.kind!=="manual"||result.expense?.id)){await BM(entry.id);FiscusLedger.complete(entry,result,active);flushed++}else{await FiscusLedger.retry(entry);failed++}}catch{await FiscusLedger.retry(entry);failed++;break}}return{flushed,failed,skipped}})();window.__fiscusSyncFlight=run;try{return await run}finally{window.__fiscusSyncFlight=null}}');
+        return;
+      }
+      if (name.startsWith('index-') && node.name.text === 'BM') {
+        replace(node.body, '{const db=await gd();await new Promise((resolve,reject)=>{const tx=db.transaction(An,"readwrite");tx.objectStore(An).delete(n);tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error)});window.dispatchEvent(new Event("fiscus:queue-changed"))}');
         return;
       }
       if (name.startsWith('index-') && node.name.text === 'Z2') replace(node.body, '{return window.FiscusUI.getLanguage()}');
-      if (name.startsWith('index-') && node.name.text === 'XM') insert(node.body.getStart(parsed) + 1, '_f();const fiscusPendingReplies=T.useRef(0);');
+      if (name.startsWith('index-') && node.name.text === 'XM') {
+        insert(node.body.getStart(parsed) + 1, '_f();const fiscusPendingReplies=T.useRef(0),fiscusContext=T.useRef(null),fiscusLedgerReady=T.useRef(null);const [fiscusUndo,setFiscusUndo]=T.useState([]);');
+        insert(node.body.statements[0].end, 'T.useEffect(()=>{if(h&&fiscusLedgerReady.current===dt)$w({account:h,family:U,expenses:l,chat:{messages:n,hasMore:ut}})},[l,n,h,U,dt]);');
+        insert(node.body.statements[0].end, 'fiscusContext.current={scopeId:dt,username:h?.username};T.useEffect(()=>{const changed=event=>{const value=event.detail;if(value?.scopeId===dt&&value?.username===h?.username&&value.expense)o(items=>[...items.filter(item=>item.id!==value.expense.id),value.expense])};window.addEventListener("fiscus:ledger-changed",changed);return()=>window.removeEventListener("fiscus:ledger-changed",changed)},[dt,h?.username]);const fiscusRestore=async item=>{if(Ht||item.scopeId!==dt||item.username!==h?.username)return;setFiscusUndo(items=>items.map(value=>value.token===item.token?{...value,status:"restoring"}:value));try{const result=await Kt.restoreFromRecycleBin(item.scopeId,item.id);if(!result?.success)throw new Error("restore failed");if(fiscusContext.current?.scopeId===item.scopeId&&fiscusContext.current?.username===item.username)o(items=>[...items.filter(value=>value.id!==item.id),result.expense||item.expense]);setFiscusUndo(items=>items.filter(value=>value.token!==item.token))}catch{setFiscusUndo(items=>items.map(value=>value.token===item.token?{...value,status:"error",expiresAt:Date.now()+10000}:value));f("恢复未成功，记录仍在回收站","error")}};');
+        const returned = node.body.statements.find(s => ts.isReturnStatement(s));
+        const root = returned.expression.whenTrue.arguments[1].properties.find(p => p.name.getText(parsed) === 'children').initializer.arguments[1];
+        const children = root.properties.find(p => p.name.getText(parsed) === 'children').initializer;
+        insert(children.end - 1, ',v.jsx(FiscusUndoToast,{items:fiscusUndo.filter(item=>item.scopeId===dt&&item.username===h?.username),onUndo:fiscusRestore,onDismiss:token=>setFiscusUndo(items=>items.filter(item=>item.token!==token))})');
+      }
       if (name.startsWith('index-') && node.name.text === 'Q2') {
         const last = node.body.statements.find(s => ts.isReturnStatement(s));
         insert(last.getStart(parsed), 'T.useEffect(()=>window.FiscusUI.subscribeLanguage(()=>l(window.FiscusUI.getLanguage())),[]);');

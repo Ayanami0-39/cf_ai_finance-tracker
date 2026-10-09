@@ -332,6 +332,21 @@ account or ledger stay queued, with a message asking the user to switch back;
 they are never reassigned to the current ledger. Do not clear browser website
 data while entries are pending: unsynced entries are not yet in a D1 backup.
 
+Activity includes a month picker and remembers month, category, member and search
+filters separately for each account and ledger. New entry opens a bilingual expense /
+income form with amount, name, date, category and optional note. Submission commits
+to the existing device queue before closing; it does not wait for AI or the network.
+Pending entry details show device-saved, syncing or retry status only for their owner
+and current ledger. Manual retries use the same mutation key and require a returned
+record ID before removing the device copy. The existing POST expense route validates
+input, uses the authenticated author, enforces family roles, and prevents delayed
+manual retries from recreating deleted records. No schema migration is required.
+
+A successful deletion offers Undo for 10 seconds. Undo uses the existing recycle-bin
+restore route, preserving the record ID and all original fields. Failed restores keep
+the record in the recycle bin and offer a retry. These controls and cached ledger
+updates stay scoped to the account and ledger that originated the operation.
+
 `node scripts/build-ui.mjs` verifies the recovered baseline hashes and generates the
 versioned frontend served by the Worker. `frontend/refinements/` contains the layout,
 viewport bridge and English/Chinese UI dictionary. The original application components,

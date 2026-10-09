@@ -37,21 +37,23 @@ function FiscusActionMenu({ children, label = '更多', compact = false }) {
     ],
   });
 }
-function FiscusSyncStatus({ online, pending }) {
+function FiscusSyncStatus({ online, pending, account, scopeId }) {
+  const queue = FiscusUseQueue();
   const [busy, setBusy] = T.useState(false);
   T.useEffect(() => {
     const changed = event => setBusy(Boolean(event.detail));
     window.addEventListener('fiscus:sync-state', changed);
     return () => window.removeEventListener('fiscus:sync-state', changed);
   }, []);
-  if (!pending) return v.jsx('span', {
+  if (!pending && !queue.error) return v.jsx('span', {
     className: 'fiscus-sync-status', title: window.FiscusUI.translate(online ? '此设备没有待同步记录' : '离线记录保存在此设备，联网后自动同步'),
-    children: window.FiscusUI.translate(online ? '在线' : '离线'),
+    children: window.FiscusUI.translate(online ? '已同步' : '离线'),
   });
   return v.jsxs(FiscusActionMenu, {
     label: `${pending} ${window.FiscusUI.translate('待同步')}`,
     children: [
       v.jsx('p', { className: 'fiscus-sync-explanation', children: window.FiscusUI.translate('记录保存在此设备，同步成功前请勿清除网站数据。如记录属于其他账本，请切换回原账本。') }),
+      v.jsx(FiscusPendingEntries, { account, scopeId }),
       v.jsx('button', {
         type: 'button', disabled: !online || busy, 'aria-label': busy ? '同步中…' : '重试同步',
         onClick: () => window.dispatchEvent(new Event('fiscus:retry-sync')),

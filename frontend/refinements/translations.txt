@@ -13,6 +13,36 @@
 个人账本|Personal ledger
 家庭账本|Family ledger
 数据|Data
+所有月份|All months
+选择月份|Choose month
+新增记录|New entry
+填写信息即可保存|Enter the details and save.
+记录类型|Entry type
+金额|Amount
+名称|Name
+日期|Date
+分类|Category
+备注（选填）|Note (optional)
+咖啡、工资等|Coffee, salary…
+请输入名称和有效金额，最多两位小数|Enter a name and a valid amount with up to two decimal places.
+未能保存，请保留表单并重试|Couldn't save. Keep the form open and try again.
+正在保存|Saving…
+保存记录|Save entry
+设备上的待同步记录|Entries awaiting sync
+已存于此设备|Saved on this device
+已存于此设备，将自动同步|Saved on this device. Syncs automatically.
+已存于此设备，联网后自动同步|Saved on this device. Syncs when online.
+已同步|Synced
+正在同步|Syncing
+需要重试|Retry needed
+暂时无法读取设备记录，请保留网站数据并重试|Can't read saved entries. Keep website data and try again.
+其他账本的待同步记录已保留，请切换回对应账本|Entries from another ledger are safe. Switch back to that ledger to sync.
+记录已删除|Entry deleted
+正在恢复|Restoring…
+撤销|Undo
+重试撤销|Retry Undo
+关闭撤销提示|Dismiss Undo
+恢复未成功，记录仍在回收站|Couldn't restore. The entry remains in the recycle bin.
 按月或按周查看收支与分类占比|Explore your income and expenses by month or week
 刷新数据|Refresh
 切换到 English|Switch to English

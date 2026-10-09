@@ -2439,12 +2439,12 @@ function dedupHashOf(scope, e) {
   const merchant = (e.merchant || e.description || "").trim().toLowerCase().slice(0, 30);
   return `${scope}|${amountKey(e.amount)}|${merchant}|${e.date}`;
 }
-async function d1AddExpense(db, scope, e) {
+async function d1AddExpense(db, scope, e, protectDeleted = false) {
   const hash = e.dedupHash || dedupHashOf(scope, e);
   const sql = `INSERT ${e.idempotencyKey ? "OR IGNORE " : ""}INTO expenses
     (id, scope, amount, category, merchant, description, date, created_at, type, by, by_id, parsed_by,
      idempotency_key, account_id, paid_by, split_with, dedup_hash)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+    ${protectDeleted && e.idempotencyKey ? "SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? WHERE NOT EXISTS (SELECT 1 FROM expenses WHERE scope = ? AND idempotency_key = ? AND deleted_at IS NOT NULL)" : "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"}`;
   const res = await db.prepare(sql).bind(
     e.id,
     scope,
@@ -2462,7 +2462,8 @@ async function d1AddExpense(db, scope, e) {
     e.accountId ?? null,
     e.paidBy ?? null,
     e.splitWith ?? null,
-    hash
+    hash,
+    ...(protectDeleted && e.idempotencyKey ? [scope, e.idempotencyKey] : [])
   ).run();
   if (e.idempotencyKey && (res.meta.changes || 0) === 0) {
     const existing = await db.prepare("SELECT * FROM expenses WHERE scope = ? AND idempotency_key = ? AND deleted_at IS NULL").bind(scope, e.idempotencyKey).first();
@@ -3516,21 +3517,43 @@ app.post("/api/expenses", async (c) => {
     const body = await c.req.json();
     const auth = await requireScopeAccess(c, body.userId);
     if (!auth.ok) return auth.response;
-    if (!body.amount || !body.description) {
-      return c.json({ error: "Missing fields" }, 400);
+    const denied = await requireWriteAccess(c, auth, "expense");
+    if (denied) return denied;
+    const amount = Number(body.amount);
+    const merchant = typeof body.merchant === "string" ? body.merchant.trim() : "";
+    const description = typeof body.description === "string" ? body.description.trim() : "";
+    const category = typeof body.category === "string" ? body.category.trim() : "Other";
+    const type = body.type ?? "expense";
+    const date = body.date ?? new Date().toISOString().slice(0, 10);
+    const key = body.idempotencyKey;
+    if (!Number.isFinite(amount) || amount <= 0 || !Number.isSafeInteger(Math.round(amount * 100)) || Math.abs(amount * 100 - Math.round(amount * 100)) > 0.00001 ||
+        (!merchant && !description) || merchant.length > 160 || description.length > 500 || !category || category.length > 80 ||
+        !["expense", "income"].includes(type) || typeof date !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(date) ||
+        Number.isNaN(Date.parse(date + "T00:00:00Z")) || new Date(date + "T00:00:00Z").toISOString().slice(0, 10) !== date ||
+        (key !== undefined && (typeof key !== "string" || key.length < 8 || key.length > 100))) {
+      return c.json({ success: false, error: "请检查金额、名称和日期" }, 400);
     }
     const expense = {
       id: crypto.randomUUID(),
-      amount: Number(body.amount),
-      category: body.category || "Other",
-      description: body.description,
-      merchant: body.merchant,
-      date: (/* @__PURE__ */ new Date()).toISOString().split("T")[0],
+      amount,
+      category,
+      description,
+      merchant: merchant || void 0,
+      date,
+      type,
       createdAt: Date.now(),
-      by: body.memberName || void 0,
-      byId: body.memberId || void 0
+      by: auth.account.displayName,
+      byId: auth.account.username,
+      idempotencyKey: key
     };
-    await d1AddExpense(c.env.DB, auth.scope, expense);
+    const saved = await d1AddExpense(c.env.DB, auth.scope, expense, true);
+    if (!saved) return c.json({ success: false, error: "该次记账已处理，请刷新记录" }, 409);
+    if (saved.id !== expense.id) {
+      if (["amount", "category", "description", "date", "type"].some(field => saved[field] !== expense[field]) || (saved.merchant || "") !== merchant) {
+        return c.json({ success: false, error: "该次记账已处理，请刷新记录" }, 409);
+      }
+      return c.json({ success: true, duplicate: true, expense: saved });
+    }
     await auditAndBroadcast(
       c.env,
       auth.scope,
@@ -3543,7 +3566,7 @@ app.post("/api/expenses", async (c) => {
       },
       { type: "expense-added", by: auth.account.username }
     );
-    return c.json({ success: true, expense });
+    return c.json({ success: true, expense: saved });
   } catch (err) {
     return c.json({ error: String(err) }, 500);
   }
@@ -4438,7 +4461,7 @@ async function auditAndBroadcast(env, scope, account, entry, broadcast) {
   }
   if (broadcast) {
     try {
-      env.FINANCE_MEMORY.get(env.FINANCE_MEMORY.idFromName(scope)).broadcastChange(broadcast);
+      await env.FINANCE_MEMORY.get(env.FINANCE_MEMORY.idFromName(scope)).broadcastChange(broadcast);
     } catch (err) {
       console.error("[ws] broadcast failed:", err);
     }

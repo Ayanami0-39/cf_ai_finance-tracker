@@ -168,3 +168,55 @@ test('all 72 deployed routes remain available in the recovered backend', async (
   assert.equal(expected.length, 72);
   for (const { method, path } of expected) assert.ok(actual.has(method + ' ' + path), method + ' ' + path);
 });
+
+async function manualSession(t, username = 'manual') {
+  const fixture = await setup(t);
+  const registry = fixture.env.USER_REGISTRY.get(fixture.env.USER_REGISTRY.idFromName('global'));
+  await registry.register(username, 'password');
+  const { createSession } = await loadWorker('worker/recovered/live-backend.mjs');
+  const session = await createSession(fixture.db, username, username);
+  const token = await deriveToken(fixture.env.AUTH_PASSWORD);
+  return { ...fixture, registry, request: (path, method = 'GET', body) => fixture.call(path, method, body, { Authorization: 'Bearer ' + token, Cookie: 'account_session=' + session.token }) };
+}
+const manualBody = { userId: 'user_manual', amount: 123.45, merchant: 'Salary', description: 'October payment', category: 'Income', type: 'income', date: '2026-08-31', idempotencyKey: 'manual-mutation-001' };
+
+test('manual entries preserve date and income, authenticate author, and deduplicate retries without changing records', async t => {
+  const { db, request } = await manualSession(t);
+  const body = { ...manualBody, memberId: 'spoofed', memberName: 'Spoofed' };
+  const responses = await Promise.all([request('/api/expenses', 'POST', body), request('/api/expenses', 'POST', body)]);
+  const results = await Promise.all(responses.map(response => response.json()));
+  assert.ok(responses.every(response => response.status === 200));
+  assert.equal(results[0].expense.id, results[1].expense.id);
+  assert.equal(results[0].expense.date, body.date);
+  assert.equal(results[0].expense.type, 'income');
+  assert.equal(results[0].expense.byId, 'manual');
+  assert.equal((await db.prepare('SELECT COUNT(*) AS count FROM expenses').first()).count, 1);
+  assert.equal((await request('/api/expenses', 'POST', { ...body, amount: 200 })).status, 409);
+  assert.equal((await request('/api/expenses', 'POST', { ...body, userId: 'user_someone_else' })).status, 403);
+  const id = results[0].expense.id;
+  assert.equal((await request('/api/expenses/user_manual/' + id, 'DELETE')).status, 200);
+  assert.equal((await request('/api/expenses', 'POST', body)).status, 409, 'a retry cannot resurrect a deleted entry');
+  const restored = await (await request('/api/recycle-bin/' + id + '/restore?scope=user_manual', 'POST')).json();
+  assert.equal(restored.success, true);
+  assert.deepEqual(restored.expense, results[0].expense, 'Undo restores every original field and ID');
+});
+
+test('invalid manual input never writes a record', async t => {
+  const { db, request } = await manualSession(t);
+  for (const invalid of [{ amount: 0 }, { amount: -1 }, { amount: 1.001 }, { amount: 'NaN' }, { date: '2026-02-30' }, { type: 'other' }, { merchant: '', description: '' }, { merchant: 'x'.repeat(161) }, { idempotencyKey: 'short' }]) {
+    assert.equal((await request('/api/expenses', 'POST', { ...manualBody, ...invalid })).status, 400, JSON.stringify(invalid));
+  }
+  assert.equal((await db.prepare('SELECT COUNT(*) AS count FROM expenses').first()).count, 0);
+});
+
+test('a family viewer cannot create manual entries, while a contributor can', async t => {
+  const { registry, request } = await manualSession(t);
+  await registry.register('owner', 'password');
+  const { family } = await registry.createFamily('owner');
+  await registry.joinFamily('manual', family.code);
+  await registry.setMemberRole('owner', 'manual', 'viewer');
+  const body = { ...manualBody, userId: family.scopeId };
+  assert.equal((await request('/api/expenses', 'POST', body)).status, 403);
+  await registry.setMemberRole('owner', 'manual', 'contributor');
+  assert.equal((await request('/api/expenses', 'POST', body)).status, 200);
+});
