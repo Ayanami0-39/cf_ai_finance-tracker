@@ -3,6 +3,7 @@ import type { UserRegistry } from '../durable-objects/UserRegistry';
 
 export interface Env {
   AI: Ai;
+  AI_PROVIDER?: 'cloudflare' | 'deepseek';
   "DEEPSEEK-API-KEY"?: string;
   FINANCE_MEMORY: DurableObjectNamespace<FinanceMemory>;
   USER_REGISTRY: DurableObjectNamespace<UserRegistry>;

@@ -225,6 +225,7 @@ test('the deployed report and chat routes use the DeepSeek adapter while retaini
   const { env, db, request } = await manualSession(t);
   assert.equal((await request('/api/expenses', 'POST', manualBody)).status, 200);
   env['DEEPSEEK-API-KEY'] = 'synthetic-integration-key';
+  env.AI_PROVIDER = 'deepseek';
   t.mock.method(console, 'info', () => {});
   const calls = [];
   t.mock.method(globalThis, 'fetch', async (url, options) => {

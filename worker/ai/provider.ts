@@ -13,7 +13,7 @@ type Completion = {
 /** Adapt the verified DeepSeek endpoint to the deployed app's existing AI.run contract. */
 export function financeAI(env: Env): Ai {
   const key = env['DEEPSEEK-API-KEY'];
-  if (!key) return env.AI;
+  if (env.AI_PROVIDER !== 'deepseek' || !key) return env.AI;
   const original = env.AI as unknown as { run(model: string, input: unknown): Promise<unknown> };
   const run = async (model: string, options: ChatRequest) => {
     if (model !== GLM_MODEL) return original.run(model, options);

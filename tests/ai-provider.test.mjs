@@ -6,7 +6,7 @@ const { financeAI } = await loadWorker('worker/ai/provider.ts');
 const { extractAiText } = await loadWorker('worker/ai/extract-ai-text.ts');
 const model = '@cf/zai-org/glm-4.7-flash';
 const request = { messages: [{ role: 'user', content: 'Synthetic coffee entry' }], max_tokens: 4000, chat_template_kwargs: { enable_thinking: false } };
-const env = { 'DEEPSEEK-API-KEY': 'test-only-key' };
+const env = { AI_PROVIDER: 'deepseek', 'DEEPSEEK-API-KEY': 'test-only-key' };
 
 test('without the DeepSeek secret, the original Workers AI binding is preserved', () => {
   const original = { run() {} };
@@ -68,4 +68,14 @@ test('non-finance models retain their original binding and classification keeps 
     return Response.json({ choices: [{ message: { content: '{"intent":"ADD_EXPENSE"}' }, finish_reason: 'stop' }] });
   });
   await ai.run(model, { ...request, max_tokens: 50, temperature: 0.1 });
+});
+
+ test('Workers AI remains the default even when the DeepSeek secret is retained', async t => {
+  const original = { async run() { return { response: 'Workers AI' }; } };
+  t.mock.method(globalThis, 'fetch', () => { throw new Error('DeepSeek must not be called'); });
+  for (const provider of [undefined, 'cloudflare']) {
+    const ai = financeAI({ AI: original, AI_PROVIDER: provider, 'DEEPSEEK-API-KEY': 'retained-key' });
+    assert.equal(ai, original);
+    assert.deepEqual(await ai.run(model, request), { response: 'Workers AI' });
+  }
 });
