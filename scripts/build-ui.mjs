@@ -13,6 +13,7 @@ const css = await readFile(new URL('ui.css', refinements), 'utf8');
 const statsTabs = await readFile(new URL('stats-tabs.js', refinements), 'utf8');
 const actionMenu = await readFile(new URL('action-menu.js', refinements), 'utf8');
 const entryTools = await readFile(new URL('entry-tools.js', refinements), 'utf8');
+const chatFlow = await readFile(new URL('chat-flow.js', refinements), 'utf8');
 const bridge = (await readFile(new URL('ui.js', refinements), 'utf8')).replace('__FISCUS_TRANSLATIONS__', JSON.stringify(translations));
 const provenance = JSON.parse(await readFile(new URL('provenance.json', recovered), 'utf8'));
 for (const [name, expected] of Object.entries(provenance.sha256)) {
@@ -21,12 +22,12 @@ for (const [name, expected] of Object.entries(provenance.sha256)) {
 }
 const files = await readdir(new URL('assets/', recovered));
 const sources = Object.fromEntries(await Promise.all(files.map(async name => [name, await readFile(new URL('assets/' + name, recovered), 'utf8')])));
-const version = createHash('sha256').update(JSON.stringify(sources) + css + bridge + statsTabs + actionMenu + entryTools + await readFile(new URL(import.meta.url))).digest('hex').slice(0, 12);
+const version = createHash('sha256').update(JSON.stringify(sources) + css + bridge + statsTabs + actionMenu + entryTools + chatFlow + await readFile(new URL(import.meta.url))).digest('hex').slice(0, 12);
 const base = '/ui/' + version;
 
 function patchJavaScript(name, source) {
   if (name.startsWith('StatsSection-')) source += '\n' + statsTabs;
-  if (name.startsWith('index-')) source += '\n' + actionMenu + '\n' + entryTools;
+  if (name.startsWith('index-')) source += '\n' + actionMenu + '\n' + entryTools + '\n' + chatFlow;
   const parsed = ts.createSourceFile(name, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
   const edits = [];
   function insert(position, content) { edits.push({ start: position, end: position, content }); }
@@ -56,6 +57,8 @@ function patchJavaScript(name, source) {
       if (binding === 'rt') { replace(node.initializer.body, '{setFiscusMonth("all");y("all");g("all");S("")}'); return; }
     }
     if (name.startsWith('index-') && componentName === 'By' && ts.isCallExpression(node) && node.expression.getText(parsed) === 'T.useEffect' && node.arguments[0]?.getText(parsed).includes('U(C)') && node.arguments[1]?.getText(parsed) === '[m,h,x]') { insert(node.arguments[1].end - 1, ',fiscusMonth'); }
+    if(name.startsWith('index-') && componentName==='XM' && ts.isCallExpression(node) && node.expression.getText(parsed)==='i' && ['Bt.chat?.messages??[]','$.chat.messages'].includes(node.arguments[0]?.getText(parsed))) {const snapshot=node.arguments[0].getText(parsed).startsWith('Bt')?'Bt':'$';replace(node.arguments[0],`current=>FiscusMergeMessages(${node.arguments[0].getText(parsed)},current,${snapshot}.family?.scopeId||${snapshot}.account.scopeId,${snapshot}.account.username)`);return;}
+
     if (name.startsWith('index-') && componentName === 'XM' && ts.isCallExpression(node) && node.expression.getText(parsed) === 'o') {
       if (node.arguments[0]?.getText(parsed) === '$.expenses') insert(node.getStart(parsed), 'fiscusLedgerReady.current=$.family?.scopeId||$.account.scopeId,');
       if (node.arguments[0]?.getText(parsed) === 'Bt.expenses??[]') insert(node.getStart(parsed), 'fiscusLedgerReady.current=Bt.family?.scopeId||Bt.account.scopeId,');
@@ -63,6 +66,7 @@ function patchJavaScript(name, source) {
     if (name.startsWith('index-') && componentName === 'XM' && ts.isVariableDeclaration(node) && node.name.getText(parsed) === 'I' && node.initializer?.getText(parsed).includes('Kt.deleteExpense')) {
       replace(node.initializer.body, '{if(!dt||Ht)return;const scopeId=dt,username=h?.username,expense=l.find(entry=>entry.id===tt);if(!expense)return;o(entries=>entries.filter(entry=>entry.id!==tt));try{await Kt.deleteExpense(scopeId,tt);setFiscusUndo(items=>[...items.filter(item=>item.expiresAt>Date.now()),{id:tt,expense,scopeId,username,token:crypto.randomUUID(),status:"ready",expiresAt:Date.now()+10000}])}catch{f("删除失败，正在恢复列表","error");if(fiscusContext.current?.scopeId===scopeId&&fiscusContext.current?.username===username)te(scopeId)}}'); return;
     }
+    if (name.startsWith('index-') && componentName === 'XM' && ts.isVariableDeclaration(node) && node.name.getText(parsed)==='Mn' && ts.isArrowFunction(node.initializer)) {replace(node.initializer.body,'{const username=h?.username;try{const result=await Kt.getChatHistory(tt,{limit:gt});if(result.success&&fiscusContext.current?.scopeId===tt&&fiscusContext.current?.username===username){i(current=>FiscusMergeMessages(result.messages,current,tt,username));Te.current=result.messages.length?result.messages[0].timestamp:null;Jt(!!result.hasMore)}}catch{}}');return;}
     if (name.startsWith('index-') && componentName === 'XM' && ts.isVariableDeclaration(node) && node.name.getText(parsed) === 'te' && ts.isArrowFunction(node.initializer)) {
       replace(node.initializer.body, '{const username=h?.username;try{const result=await Kt.getExpenses(tt);if(result.success&&fiscusContext.current?.scopeId===tt&&fiscusContext.current?.username===username){fiscusLedgerReady.current=tt;o(result.expenses)}}catch{}}'); return;
     }
@@ -195,6 +199,17 @@ function patchJavaScript(name, source) {
         const sections = childrenOf(childrenOf(returned.expression.arguments[1]).elements[1].arguments[1]);
         insert(sections.end - 1, ',v.jsx(FiscusActivityTools,{expenses:n,scopeId:c,month:fiscusMonth,onMonthChange:setFiscusMonth,canWrite:!!i,onSaved:expense=>{setFiscusMonth(expense.date.slice(0,7));y("all");g("all");S("")}})');
       }
+      if (name.startsWith('index-') && node.name.text === 'LM') insert(node.body.end-1,';window.dispatchEvent(new Event("fiscus:chat-context-changed"))');
+      if (name.startsWith('index-') && node.name.text === 'I2') {replace(node.body,'{return {shown:n,done:true}}');return;}
+      if (name.startsWith('index-') && node.name.text === 'W2') {
+        const returned=node.body.statements.find(statement=>ts.isReturnStatement(statement));
+        insert(returned.expression.getStart(parsed),'v.jsx(FiscusMessageActions,{message:n,children:');insert(returned.expression.end,'})');
+      }
+      if (name.startsWith('index-') && node.name.text === 'ot') {
+        const handler=node.body.getText(parsed);
+        if(!handler.includes('const y=new AbortController,h=setTimeout(()=>y.abort(),l);'))throw new Error('API cancellation target changed');
+        replace(node.body,handler.replace('const y=new AbortController,h=setTimeout(()=>y.abort(),l);','const y=new AbortController(),abort=()=>y.abort(),h=setTimeout(abort,l);if(c.signal?.aborted)y.abort();else c.signal?.addEventListener("abort",abort,{once:true});').replace('clearTimeout(h)','clearTimeout(h),c.signal?.removeEventListener("abort",abort)').replace('throw new Error(y.error||`请求失败（${f.status}）`)','throw Object.assign(new Error(y.error||y.message||`请求失败（${f.status}）`),{status:f.status,body:y})'));return;
+      }
       if (name.startsWith('index-') && node.name.text === 'ky') {
         insert(node.body.getStart(parsed) + 1, 'const fiscusFollow=T.useRef(true),[fiscusAway,setFiscusAway]=T.useState(false);');
         const returned = node.body.statements.find(s => ts.isReturnStatement(s));
@@ -238,12 +253,12 @@ function patchJavaScript(name, source) {
         return;
       }
       if (name.startsWith('index-') && node.name.text === 'n0') {
-        const body = node.body.getText(parsed).replace('clientMutationId:crypto.randomUUID()', 'clientMutationId:i?.idempotencyKey||crypto.randomUUID()').replace('return kM(l),l', 'return kM(l).then(()=>l)');
+        const body = node.body.getText(parsed).replace('clientMutationId:crypto.randomUUID()', 'clientMutationId:i?.idempotencyKey||crypto.randomUUID(),chatMessage:i?.chatMessage').replace('return kM(l),l', 'return kM(l).then(()=>l)');
         replace(node.body, body);
         return;
       }
       if (name.startsWith('index-') && node.name.text === 'HM') {
-        replace(node.body, '{if(window.__fiscusSyncFlight)return window.__fiscusSyncFlight;const active=Yi;const run=(async()=>{let flushed=0,failed=0,skipped=0;if(!jf())return{flushed,failed,skipped};for(const entry of await FiscusLedger.readQueue()){if(!active?.scopeId||!active?.username||(entry.username&&entry.username!==active.username)||(entry.scopeId&&entry.scopeId!==active.scopeId)){skipped++;continue}try{await kM({...entry,syncState:"syncing",lastAttemptAt:Date.now()});const result=entry.kind==="manual"?await FiscusLedger.sendManual({...entry.expense,userId:active.scopeId,idempotencyKey:entry.clientMutationId}):await n({userId:active.scopeId,input:entry.input,memberName:entry.memberName,memberId:entry.memberId,idempotencyKey:entry.clientMutationId});if((result?.success||result?.duplicate)&&(entry.kind!=="manual"||result.expense?.id)){await BM(entry.id);FiscusLedger.complete(entry,result,active);flushed++}else{await FiscusLedger.retry(entry);failed++}}catch{await FiscusLedger.retry(entry);failed++;break}}return{flushed,failed,skipped}})();window.__fiscusSyncFlight=run;try{return await run}finally{window.__fiscusSyncFlight=null}}');
+        replace(node.body, '{if(window.__fiscusSyncFlight)return window.__fiscusSyncFlight;const active=Yi;const run=(async()=>{let flushed=0,failed=0,skipped=0;if(!jf())return{flushed,failed,skipped};for(const entry of await FiscusLedger.readQueue()){if(!active?.scopeId||!active?.username||(entry.username&&entry.username!==active.username)||(entry.scopeId&&entry.scopeId!==active.scopeId)){skipped++;continue}try{await kM({...entry,syncState:"syncing",lastAttemptAt:Date.now()});const result=entry.kind==="manual"?await FiscusLedger.sendManual({...entry.expense,userId:active.scopeId,idempotencyKey:entry.clientMutationId}):await n({commandId:entry.clientMutationId,messageTimestamp:entry.chatMessage?.timestamp,userId:active.scopeId,input:entry.input,memberName:entry.memberName,memberId:entry.memberId,idempotencyKey:entry.clientMutationId});if((result?.success||result?.duplicate)&&(entry.kind!=="manual"||result.expense?.id)){await BM(entry.id);FiscusLedger.complete(entry,result,active);if(entry.chatMessage)window.dispatchEvent(new CustomEvent("fiscus:chat-synced",{detail:{entry,result,context:active}}));flushed++}else{await FiscusLedger.retry(entry);failed++}}catch{await FiscusLedger.retry(entry);failed++;break}}return{flushed,failed,skipped}})();window.__fiscusSyncFlight=run;try{return await run}finally{window.__fiscusSyncFlight=null}}');
         return;
       }
       if (name.startsWith('index-') && node.name.text === 'BM') {
@@ -254,6 +269,8 @@ function patchJavaScript(name, source) {
       if (name.startsWith('index-') && node.name.text === 'XM') {
         insert(node.body.getStart(parsed) + 1, '_f();const fiscusPendingReplies=T.useRef(0),fiscusContext=T.useRef(null),fiscusLedgerReady=T.useRef(null);const [fiscusUndo,setFiscusUndo]=T.useState([]);');
         insert(node.body.statements[0].end, 'T.useEffect(()=>{if(h&&fiscusLedgerReady.current===dt)$w({account:h,family:U,expenses:l,chat:{messages:n,hasMore:ut}})},[l,n,h,U,dt]);');
+        insert(node.body.statements[0].end, 'T.useEffect(()=>{const synced=event=>{const {entry,result,context}=event.detail;if(context.scopeId!==dt||context.username!==h?.username)return;const message=n.find(item=>item.id===entry.chatMessage.id)||entry.chatMessage,state=FiscusChatState.entries.get(FiscusChatState.key(dt,h.username,message.id));if(state&&!["error","queued"].includes(state.phase))return;if(n.some(item=>item.replyTo===message.id&&item.requestId===message.requestId&&item.id.startsWith("reply:")))return;dn(message.content,message,result)};window.addEventListener("fiscus:chat-synced",synced);return()=>window.removeEventListener("fiscus:chat-synced",synced)},[dt,h?.username,n]);');
+        insert(node.body.statements[0].end, 'T.useEffect(()=>{const resend=event=>{const value=event.detail;if(value.scopeId===dt&&value.username===h?.username)dn(value.message.content,value.message)};window.addEventListener("fiscus:resend-message",resend);return()=>window.removeEventListener("fiscus:resend-message",resend)},[dt,h?.username,n,Mt,Ht]);');
         insert(node.body.statements[0].end, 'fiscusContext.current={scopeId:dt,username:h?.username};T.useEffect(()=>{const changed=event=>{const value=event.detail;if(value?.scopeId===dt&&value?.username===h?.username&&value.expense)o(items=>[...items.filter(item=>item.id!==value.expense.id),value.expense])};window.addEventListener("fiscus:ledger-changed",changed);return()=>window.removeEventListener("fiscus:ledger-changed",changed)},[dt,h?.username]);const fiscusRestore=async item=>{if(Ht||item.scopeId!==dt||item.username!==h?.username)return;setFiscusUndo(items=>items.map(value=>value.token===item.token?{...value,status:"restoring"}:value));try{const result=await Kt.restoreFromRecycleBin(item.scopeId,item.id);if(!result?.success)throw new Error("restore failed");if(fiscusContext.current?.scopeId===item.scopeId&&fiscusContext.current?.username===item.username)o(items=>[...items.filter(value=>value.id!==item.id),result.expense||item.expense]);setFiscusUndo(items=>items.filter(value=>value.token!==item.token))}catch{setFiscusUndo(items=>items.map(value=>value.token===item.token?{...value,status:"error",expiresAt:Date.now()+10000}:value));f("恢复未成功，记录仍在回收站","error")}};');
         const returned = node.body.statements.find(s => ts.isReturnStatement(s));
         const root = returned.expression.whenTrue.arguments[1].properties.find(p => p.name.getText(parsed) === 'children').initializer.arguments[1];
@@ -271,7 +288,7 @@ function patchJavaScript(name, source) {
     }
     // A queued retry must reuse the key sent before a response was lost.
     if (name.startsWith('index-') && ts.isVariableDeclaration(node) && node.name.getText(parsed) === 'dn' && ts.isArrowFunction(node.initializer)) {
-      insert(node.initializer.body.getStart(parsed) + 1, 'const mutationId=crypto.randomUUID();');
+      replace(node.initializer,'async(tt,previous,completedResult)=>FiscusRunChat({account:h,scopeId:dt,canWrite:!Ht,online:Mt,messages:n,setMessages:i,setLoading:d,refresh:te,refreshOther:H,pendingCounter:fiscusPendingReplies,contextRef:fiscusContext,onQueue:St},tt,previous,completedResult)'); return;
     }
     let owner = node.parent;
     while (owner && !(ts.isVariableDeclaration(owner) && owner.name.getText(parsed) === 'dn')) owner = owner.parent;

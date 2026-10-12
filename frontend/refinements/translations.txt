@@ -431,3 +431,12 @@ CSV 解析失败|Couldn't read this CSV
 同步中…|Syncing…
 搜索 / YYYY-MM|Search or YYYY-MM
 记一笔收支|Add an entry
+用户消息，长按可重新发送|User message. Long press for actions
+消息操作|Message actions
+重新发送消息|Resend message
+替换此前的回复，不重复执行已完成的记账操作|Replace the previous reply without repeating completed record changes
+正在保存消息|Saving message
+正在生成回复|Generating reply
+响应较慢，可长按消息重新发送|Taking longer. Long press to resend
+请求未完成，请检查记录后重试|Request incomplete. Check your records before retrying
+请检查记录后再记账|Check Activity before adding another entry

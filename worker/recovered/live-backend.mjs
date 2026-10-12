@@ -1238,9 +1238,9 @@ function toTodayStr() {
   const bj = new Date(Date.now() + 8 * 36e5);
   return `${bj.getUTCFullYear()}-${String(bj.getUTCMonth() + 1).padStart(2, "0")}-${String(bj.getUTCDate()).padStart(2, "0")}`;
 }
-async function processExpenseInput(AI, input, memberName) {
+async function processExpenseInput(AI, input, memberName, referenceDate) {
+  const today = referenceDate || toTodayStr();
   try {
-    const today = toTodayStr();
     const userPrompt = getExpenseEntryPrompt(input, memberName, today);
     const response = await AI.run(
       AI_CONFIG.model,
@@ -1262,16 +1262,16 @@ async function processExpenseInput(AI, input, memberName) {
     const aiText = stripThinking(extractAiText(response));
     if (!aiText) {
       console.error("[parse-expense] AI returned empty output, fallback to regex. input:", input, "rawResponse:", JSON.stringify(response).slice(0, 500));
-      return fallbackParsing(input);
+      return fallbackParsing(input,today);
     }
     const parsed = extractJson(aiText);
     if (!parsed) {
       console.error("[parse-expense] AI output is not valid JSON, fallback to regex. input:", input, "aiText:", aiText.slice(0, 500));
-      return fallbackParsing(input);
+      return fallbackParsing(input,today);
     }
     if (!isValidExpenseJson(parsed)) {
       console.error("[parse-expense] AI JSON missing required fields or invalid category, fallback to regex. input:", input, "parsed:", JSON.stringify(parsed).slice(0, 500));
-      return fallbackParsing(input);
+      return fallbackParsing(input,today);
     }
     let category = parsed.category;
     let type = parsed.type === "income" ? "income" : "expense";
@@ -1289,14 +1289,14 @@ async function processExpenseInput(AI, input, memberName) {
     if (typeof parsed.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(parsed.date) && hasDateClue) {
       date = parsed.date;
     } else if (!date && hasDateClue) {
-      date = extractDate(input);
+      date = extractDate(input,today);
       if (date) {
         console.warn("[parse-expense] AI omitted date, recovered from input via extractDate:", input, "->", date);
       }
     }
     const notes = [];
     if (hasDateClue && RELATIVE_DATE_RE.test(input)) {
-      const localDate = extractDate(input);
+      const localDate = extractDate(input,today);
       if (localDate && localDate !== date) {
         console.warn("[parse-expense] AI relative date mismatch, corrected to local rule. input:", input, "ai:", date, "-> local:", localDate);
         date = localDate;
@@ -1361,8 +1361,9 @@ async function processExpenseInput(AI, input, memberName) {
       }
     };
   } catch (error) {
+    if(error instanceof Error && error.message === "AI response timed out")return {success:false,timedOut:true};
     console.error("[parse-expense] AI call failed, fallback to regex. input:", input, "error:", error instanceof Error ? error.message : error);
-    return fallbackParsing(input);
+    return fallbackParsing(input,today);
   }
 }
 function normalizeIncomeMerchant(merchant) {
@@ -1547,7 +1548,7 @@ const CN_CATEGORY_KEYWORDS = [
   ["Personal Care", /(理发|健身|瑜伽|美容|护肤|化妆品|洗牙)/],
   ["Travel", /(酒店|民宿|签证|旅游)/]
 ];
-function fallbackParsing(input) {
+function fallbackParsing(input, referenceDate) {
   const amount = extractAmount(input);
   const isIncome = /(收到|到账|收入|工资|薪水|薪|红包|报销|退款|退了|奖金|奖励|补贴|稿费|奖学金|中奖|佣金|分红|利息|劳务费|退税|卖二手|卖了|涨薪|salary|received|refund|bonus)/i.test(input);
   let category = "Other";
@@ -1591,7 +1592,7 @@ function fallbackParsing(input) {
     }
   }
   const type = isIncome ? "income" : "expense";
-  const date = extractDate(input);
+  const date = extractDate(input, referenceDate);
   return {
     amount,
     merchant,
@@ -1611,8 +1612,8 @@ function fallbackParsing(input) {
     }
   };
 }
-function extractDate(input) {
-  const today = new Date(Date.now() + 8 * 36e5);
+function extractDate(input, referenceDate) {
+  const today = referenceDate ? new Date(referenceDate+"T12:00:00Z") : new Date(Date.now() + 8 * 36e5);
   if (/今天|today/i.test(input)) return toBJDateStr(today);
   if (/昨天|yesterday/i.test(input)) {
     today.setUTCDate(today.getUTCDate() - 1);
@@ -1624,12 +1625,12 @@ function extractDate(input) {
   }
   const fullMatch = input.match(/(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})/);
   if (fullMatch) {
-    return buildDateStr(Number(fullMatch[1]), Number(fullMatch[2]), Number(fullMatch[3]));
+    return buildDateStr(Number(fullMatch[1]), Number(fullMatch[2]), Number(fullMatch[3]),referenceDate);
   }
   const monthDay = input.match(/(?:(\d{4})\s*年\s*)?(\d{1,2})\s*月\s*(\d{1,2})\s*[日号]/) || input.match(/(?:(\d{4})[-/])?(\d{1,2})[-/](\d{1,2})(?!\d)/);
   if (monthDay) {
     const year = monthDay[1] ? Number(monthDay[1]) : void 0;
-    return buildDateStr(year, Number(monthDay[2]), Number(monthDay[3]));
+    return buildDateStr(year, Number(monthDay[2]), Number(monthDay[3]),referenceDate);
   }
   const daysAgo = input.match(/(\d+)\s*天前/);
   if (daysAgo) {
@@ -1641,14 +1642,14 @@ function extractDate(input) {
 function toBJDateStr(d) {
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
 }
-function buildDateStr(y, m, d) {
+function buildDateStr(y, m, d, referenceDate) {
   if (m < 1 || m > 12 || d < 1 || d > 31) return void 0;
-  let year = y ?? new Date(Date.now() + 8 * 36e5).getUTCFullYear();
+  let year = y ?? (referenceDate ? Number(referenceDate.slice(0,4)) : new Date(Date.now() + 8 * 36e5).getUTCFullYear());
   const dt = new Date(year, m - 1, d);
   if (dt.getFullYear() !== year || dt.getMonth() !== m - 1 || dt.getDate() !== d) {
     return void 0;
   }
-  if (!y && dt.getTime() > Date.now()) {
+  if (!y && dt.getTime() > (referenceDate ? Date.parse(referenceDate+"T23:59:59Z") : Date.now())) {
     year -= 1;
   }
   return `${year}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
@@ -1732,7 +1733,21 @@ const INTENT_CONFIG = {
   temperature: 0.1,
   max_tokens: 50
 };
+function detectFastIntent(input) {
+  if (typeof input !== "string") return null;
+  const question=/[?？]|(建议|应该|是否|能否|如何|怎么|should|could|can I|how do)/i.test(input);
+  const explicitEntry=/(帮我记|请记|记一笔|记录这|please record|log this|record this)/i.test(input);
+  if(question&&!explicitEntry&&/(支出|收入|钱|花|消费|买|工资|删除|记录|expense|income|spend|budget|money|delete|record|coffee|lunch)/i.test(input))return INTENTS.QUERY;
+  if (/(删除|删掉|撤销|清除|订阅|每月|每个月|固定|定期|修改|改成|delete|remove|cancel|undo|subscription|recurring)/i.test(input)) return null;
+  if (/(花了多少|多少钱|汇总|统计|总结|分析|建议|how much|what.*spent|show.*expense|total spending|summarize|spending advice)/i.test(input)) return INTENTS.QUERY;
+  if (/[?？]|(如果|计划|打算|预算|能否|是否|应该|建议|how|why|should|could|will|can I)/i.test(input)) return null;
+  if (/^(coffee|lunch|dinner|breakfast|groceries|taxi|bus|train|rent|salary|奶茶|咖啡|午饭|早餐|晚饭|打车|出租车|地铁|房租|工资)\s*[:：]?\s*[¥￥$]?\s*\d+(?:\.\d{1,2})?\s*(?:元|块|cny|usd|rmb)?$/i.test(input.trim())) return INTENTS.ADD_EXPENSE;
+  if (/(花了|买了|付了|消费了|到账|收入|工资|红包|奖励|spent|bought|paid|received|earned)/i.test(input) && /[0-9一二三四五六七八九十百千万两]/.test(input)) return INTENTS.ADD_EXPENSE;
+  return null;
+}
 async function classifyIntent(AI, input) {
+  const fast = detectFastIntent(input);
+  if (fast) return fast;
   if (!AI) {
     return quickIntentDetection(input);
   }
@@ -1771,6 +1786,7 @@ async function classifyIntent(AI, input) {
 const REWARD_INCOME_HINT_RE = /(红包|奖励|奖金|补贴|稿费|奖学金|中奖|佣金|分红|利息|劳务费|退税|报销|退款|到账|工资|薪水)/;
 const SUBSCRIPTION_HINT_RE = /(每月|每个月|月结|订阅|扣款|定期|固定|自动|recurring|subscription|续费|改成|涨价|变更|修改)/i;
 function quickIntentDetection(input) {
+  if (/[?？]|(如果|计划|打算|能否|是否|应该|should|could|will|can I)/i.test(input)) return INTENTS.QUERY;
   const lower = input.toLowerCase();
   if (/(?:delete|remove|cancel|undo|erase|get rid of)/.test(lower)) {
     return INTENTS.DELETE_EXPENSE;
@@ -3777,11 +3793,62 @@ app.get("/api/chat/:userId", async (c) => {
     return c.json({ error: String(err) }, 500);
   }
 });
+async function saveVersionedChat(c, auth, body) {
+  if (typeof body.requestId !== "string" || body.requestId.length < 8 || body.requestId.length > 100 || typeof body.content !== "string" || !body.content.trim() || body.content.length > 20000 || !Number.isSafeInteger(body.attemptNo) || body.attemptNo < 1 || body.attemptNo > 1000000) return c.json({success:false,error:"Invalid message"},400);
+  const db=c.env.DB, scope=auth.scope;
+  const userId=body.role === "user" ? body.id : body.replyTo;
+  if (typeof userId !== "string" || userId.length < 8 || userId.length > 100) return c.json({success:false,error:"Invalid message ID"},400);
+  const stored=await db.prepare("SELECT record_json FROM app_chat_messages WHERE scope=? AND id=?").bind(scope,userId).first();
+  const original=stored ? JSON.parse(stored.record_json) : null;
+  const owns=original && original.role === "user" && (original.byId === auth.account.username || (!original.byId && scope === auth.account.scopeId));
+  if (original && !owns) return c.json({success:false,error:"Not your message"},403);
+  const key="chat-attempt:"+userId;
+  const meta=await db.prepare("SELECT value_json FROM app_scope_metadata WHERE scope=? AND key=?").bind(scope,key).first();
+  const previous=meta ? JSON.parse(meta.value_json) : null;
+  if (body.role === "user") {
+    if (original && original.content !== body.content) return c.json({success:false,error:"Message content cannot change on resend"},409);
+    let replaceReplyId=previous?.replyId, legacyReceipt;
+    if (!previous && original) {
+      const next=await db.prepare("SELECT record_json FROM app_chat_messages WHERE scope=? AND timestamp>? ORDER BY timestamp,id LIMIT 1").bind(scope,original.timestamp).first();
+      const nextMessage=next ? JSON.parse(next.record_json) : null;
+      if (nextMessage?.role === "ai" && !nextMessage.replyTo) {
+        if(scope === auth.account.scopeId)replaceReplyId=nextMessage.id;
+        if(nextMessage.expense?.id){const row=await db.prepare("SELECT * FROM expenses WHERE scope=? AND id=? AND description=? AND (by_id=? OR (?=1 AND by_id IS NULL))").bind(scope,nextMessage.expense.id,original.content,auth.account.username,scope===auth.account.scopeId?1:0).first();if(row){replaceReplyId=nextMessage.id;legacyReceipt={success:true,commandKind:"ADD_EXPENSE",message:"This entry is already saved. No duplicate was added.",parsedBy:row.parsed_by,data:row.deleted_at===null?{expense:rowToExpense(row)}:undefined};if(row.deleted_at!==null)legacyReceipt.message="This entry was removed. Resending did not restore it.";} }
+      }
+    }
+    const legacy=original?.legacyCommand ?? Boolean(original && !original.clientMutationId);
+    const state={requestId:body.requestId,attemptNo:body.attemptNo,replyId:"reply:"+userId,replaceReplyId,username:auth.account.username,legacy,legacyReceipt:legacyReceipt || previous?.legacyReceipt};
+    const result=await db.prepare("INSERT INTO app_scope_metadata(scope,key,value_json) VALUES(?,?,?) ON CONFLICT(scope,key) DO UPDATE SET value_json=excluded.value_json WHERE json_extract(app_scope_metadata.value_json,'$.attemptNo') < ? OR json_extract(app_scope_metadata.value_json,'$.requestId') = ?").bind(scope,key,JSON.stringify(state),body.attemptNo,body.requestId).run();
+    if (!result.meta.changes) return c.json({success:false,error:"This attempt was superseded"},409);
+    const message={...(original || {}),id:userId,role:"user",content:body.content,timestamp:original?.timestamp || body.timestamp || Date.now(),by:original?.by || auth.account.displayName,byId:auth.account.username,clientMutationId:original?.clientMutationId || userId,attemptNo:body.attemptNo,requestId:body.requestId,legacyCommand:legacy,scopeId:scope};
+    const userStatement=db.prepare("INSERT INTO app_chat_messages(scope,id,timestamp,record_json) SELECT ?,?,?,? WHERE EXISTS(SELECT 1 FROM app_scope_metadata WHERE scope=? AND key=? AND json_extract(value_json,'$.requestId')=?) ON CONFLICT(scope,id) DO UPDATE SET record_json=excluded.record_json").bind(scope,userId,message.timestamp,JSON.stringify(message),scope,key,body.requestId);
+    const statements=[userStatement];
+    if(replaceReplyId) {
+      statements.push(db.prepare("INSERT INTO app_scope_metadata(scope,key,value_json) SELECT scope,?,record_json FROM app_chat_messages WHERE scope=? AND id=? AND json_extract(record_json,'$.role')='ai' AND EXISTS(SELECT 1 FROM app_scope_metadata WHERE scope=? AND key=? AND json_extract(value_json,'$.requestId')=?) ON CONFLICT(scope,key) DO NOTHING").bind("superseded-chat:"+body.requestId,scope,replaceReplyId,scope,key,body.requestId));
+      statements.push(db.prepare("DELETE FROM app_chat_messages WHERE scope=? AND id=? AND json_extract(record_json,'$.role')='ai' AND EXISTS(SELECT 1 FROM app_scope_metadata WHERE scope=? AND key=? AND json_extract(value_json,'$.requestId')=?)").bind(scope,replaceReplyId,scope,key,body.requestId));
+    }
+    const written=await db.batch(statements);
+    if(!written[0].meta.changes)return c.json({success:false,error:"This attempt was superseded"},409);
+    return c.json({success:true,message,legacyResend:legacy,supersededReplyId:replaceReplyId});
+  }
+  if (!owns || previous?.username !== auth.account.username || previous?.requestId !== body.requestId || previous?.attemptNo !== body.attemptNo || body.id !== previous.replyId) return c.json({success:false,error:"This reply was superseded"},409);
+  const message={id:previous.replyId,role:"ai",content:body.content,timestamp:Number(original.timestamp)+0.1,updatedAt:Date.now(),replyTo:userId,requestId:body.requestId,attemptNo:body.attemptNo,byId:auth.account.username,parsedBy:body.parsedBy,expense:body.expense,scopeId:scope,needsReview:Boolean(body.needsReview)};
+  const statements=[];
+  if (previous.replaceReplyId) {
+    statements.push(db.prepare("INSERT INTO app_scope_metadata(scope,key,value_json) SELECT scope,?,record_json FROM app_chat_messages WHERE scope=? AND id=? AND EXISTS(SELECT 1 FROM app_scope_metadata WHERE scope=? AND key=? AND json_extract(value_json,'$.requestId')=?) ON CONFLICT(scope,key) DO NOTHING").bind("superseded-chat:"+body.requestId,scope,previous.replaceReplyId,scope,key,body.requestId));
+    if (previous.replaceReplyId !== message.id) statements.push(db.prepare("DELETE FROM app_chat_messages WHERE scope=? AND id=? AND EXISTS(SELECT 1 FROM app_scope_metadata WHERE scope=? AND key=? AND json_extract(value_json,'$.requestId')=?)").bind(scope,previous.replaceReplyId,scope,key,body.requestId));
+  }
+  statements.push(db.prepare("INSERT INTO app_chat_messages(scope,id,timestamp,record_json) SELECT ?,?,?,? WHERE EXISTS(SELECT 1 FROM app_scope_metadata WHERE scope=? AND key=? AND json_extract(value_json,'$.requestId')=?) ON CONFLICT(scope,id) DO UPDATE SET record_json=excluded.record_json,timestamp=excluded.timestamp").bind(scope,message.id,message.timestamp,JSON.stringify(message),scope,key,body.requestId));
+  const results=await db.batch(statements);
+  if (!results[results.length-1].meta.changes) return c.json({success:false,error:"This reply was superseded"},409);
+  return c.json({success:true,message});
+}
 app.post("/api/chat/:userId", async (c) => {
   try {
     const auth = await requireScopeAccess(c, c.req.param("userId"));
     if (!auth.ok) return auth.response;
     const body = await c.req.json();
+    if (body.requestId && (body.role === "user" || body.replyTo)) return saveVersionedChat(c, auth, body);
     if (!body.role || !body.content) {
       return c.json({ error: "Missing role or content" }, 400);
     }
@@ -3828,23 +3895,40 @@ app.delete("/api/chat/:userId", async (c) => {
     return c.json({ error: String(err) }, 500);
   }
 });
-app.post("/api/voice-command", async (c) => {
+async function handleVoiceCommand(c) {
   try {
     const body = await c.req.json();
     const { input, memberName, memberId } = body;
+    if(typeof body.referenceDate !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(body.referenceDate) || !Number.isFinite(Date.parse(body.referenceDate+"T00:00:00Z")) || new Date(body.referenceDate+"T00:00:00Z").toISOString().slice(0,10)!==body.referenceDate)body.referenceDate=undefined;
     const auth = await requireScopeAccess(c, body.userId);
     if (!auth.ok) return auth.response;
     const userId = auth.scope;
     if (!input) {
       return c.json({ success: false, error: "Missing input" }, 400);
     }
+    if(typeof body.idempotencyKey === "string" && body.idempotencyKey.length>=8){
+      const row=await c.env.DB.prepare("SELECT * FROM expenses WHERE scope=? AND idempotency_key=? ORDER BY deleted_at IS NULL DESC LIMIT 1").bind(userId,body.idempotencyKey.slice(0,100)).first();
+      if(row){
+        if(row.description!==input)return c.json({success:false,error:"This command ID was already used"},409);
+        c.set("commandIntent",INTENTS.ADD_EXPENSE);
+        if(row.deleted_at!==null)return c.json({success:true,message:"This entry was removed. Resending did not restore it."});
+        return c.json({success:true,message:"This entry is already saved. No duplicate was added.",parsedBy:row.parsed_by,data:{expense:rowToExpense(row)}});
+      }
+    }
     const intent = await classifyIntent(c.env.AI, input);
+    c.set("commandIntent", intent);
+    if (body.readOnlyResend && ![INTENTS.QUERY, INTENTS.HELP].includes(intent)) return c.json({success: true, message: /[\u4e00-\u9fff]/.test(input) ? "这条旧消息没有安全的重试标识，请先检查记录，避免重复记账。" : "This older message has no safe retry ID. Check Activity before adding another entry."});
+    if ([INTENTS.ADD_EXPENSE, INTENTS.DELETE_EXPENSE, INTENTS.MANAGE_SUBSCRIPTION].includes(intent)) {
+      const denied = await requireWriteAccess(c, auth, intent === INTENTS.MANAGE_SUBSCRIPTION ? "manage" : "expense");
+      if (denied) return denied;
+    }
     if (intent === INTENTS.ADD_EXPENSE) {
-      const aiResult = await processExpenseInput(c.env.AI, input, memberName);
+      const aiResult = await processExpenseInput(c.env.AI, input, memberName,body.referenceDate);
       if (!aiResult.success) {
         return c.json({
           success: false,
-          message: /(花了|买|付|记账|记录|块|元)/.test(input) ? "没太听懂这笔记录，试试说「我花了 50 块买咖啡」" : "Sorry, I couldn't understand that expense. Try: 'I spent $50 on coffee'"
+          safeToRetry: true,
+          message: aiResult.timedOut ? "AI response took too long. Long press your message to resend." : /(花了|买|付|记账|记录|块|元)/.test(input) ? "没太听懂这笔记录，试试说「我花了 50 块买咖啡」" : "Sorry, I couldn't understand that expense. Try: 'I spent $50 on coffee'"
         }, 400);
       }
       const rules = await d1GetRules(c.env.DB, userId);
@@ -3871,7 +3955,7 @@ app.post("/api/voice-command", async (c) => {
         category,
         merchant: aiResult.merchant,
         description: input,
-        date: aiResult.date || toTodayStr(),
+        date: aiResult.date || body.referenceDate || toTodayStr(),
         createdAt: Date.now(),
         type: aiResult.type,
         by: memberName,
@@ -3891,7 +3975,8 @@ app.post("/api/voice-command", async (c) => {
         }
       }
       try {
-        const saved = await d1AddExpense(c.env.DB, userId, expense);
+        const saved = await d1AddExpense(c.env.DB, userId, expense, true);
+        if(!saved)return c.json({success:true,message:"This entry was removed. Resending did not restore it."});
         const finalExpense = saved || expense;
         const deduped = saved === null;
         await auditAndBroadcast(
@@ -4056,6 +4141,7 @@ app.post("/api/voice-command", async (c) => {
     } else {
       return c.json({
         success: true,
+        safeToRetry: true,
         message: "我没太理解你的意思。试试说「我花了 50 块买咖啡」或「这个月花了多少钱」。 Or try: 'I spent $X on something'."
       });
     }
@@ -4065,7 +4151,37 @@ app.post("/api/voice-command", async (c) => {
       message: "Oops! Something went wrong."
     }, 500);
   }
+}
+
+async function executeVoiceCommand(request, env) {
+  const router = new Hono2();
+  router.post("/command", async c => {
+    const response = await handleVoiceCommand(c);
+    return c.json({...await response.json(), commandKind: c.get("commandIntent")}, response.status);
+  });
+  return router.fetch(request, env);
+}
+app.post("/api/voice-command", async c => {
+  const body = await c.req.json();
+  if(body.commandId === undefined)return handleVoiceCommand(c);
+  if(typeof body.commandId !== "string" || body.commandId.length < 8 || body.commandId.length > 100)return c.json({success:false,error:"Invalid command ID"},400);
+  const auth = await requireScopeAccess(c, body.userId);
+  if (!auth.ok) return auth.response;
+  const stub = c.env.FINANCE_MEMORY.get(c.env.FINANCE_MEMORY.idFromName(auth.scope));
+  const stored = await c.env.DB.prepare("SELECT record_json FROM app_chat_messages WHERE scope=? AND id=?").bind(auth.scope,body.commandId).first();
+  if(stored) {
+    const message=JSON.parse(stored.record_json);
+    if(message.role !== "user" || (message.byId !== auth.account.username && !( !message.byId && auth.scope === auth.account.scopeId)))return c.json({success:false,error:"Not your message"},403);
+    if(message.content!==body.input)return c.json({success:false,error:"Message content changed"},409);
+    if(message.legacyCommand || !message.clientMutationId)body.readOnlyResend=true;
+    const time=Number(message.timestamp);if(Number.isFinite(time)&&Math.abs(time)<8.64e15-8*36e5)body.referenceDate=new Date(time+8*36e5).toISOString().slice(0,10);
+  }
+  if(!stored&&Number.isFinite(body.messageTimestamp)&&Math.abs(body.messageTimestamp)<8.64e15-8*36e5)body.referenceDate=new Date(body.messageTimestamp+8*36e5).toISOString().slice(0,10);
+  body.memberName=auth.account.displayName;body.memberId=auth.account.username;
+  const result = await stub.runChatCommand(body, {Authorization: c.req.header("Authorization") || "", Cookie: c.req.header("Cookie") || ""}, auth.account.username);
+  return c.json(result.body, result.status);
 });
+
 app.get("/api/subscriptions", async (c) => {
   try {
     const scopeParam = c.req.query("scope");
@@ -5680,3 +5796,5 @@ export {
 export { app as liveApp, d1GetExpenses, d1UpdateExpense, d1SoftDeleteExpense, d1ClearExpenses,
   d1ImportExpenses, d1AddExpense, writeDoStorageBackup, readDoStorageBackup,
   deleteDoBackupKeys, createSession, verifySession, revokeSession };
+
+export {executeVoiceCommand, detectFastIntent};

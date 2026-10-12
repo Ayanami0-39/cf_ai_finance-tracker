@@ -1,5 +1,6 @@
 import { FinanceMemory as LiveFinanceMemory, d1GetExpenses, d1UpdateExpense, d1SoftDeleteExpense,
-  d1ClearExpenses, d1ImportExpenses, d1AddExpense, writeDoStorageBackup, readDoStorageBackup } from '../recovered/live-backend.mjs';
+  executeVoiceCommand, d1ClearExpenses, d1ImportExpenses, d1AddExpense, writeDoStorageBackup, readDoStorageBackup } from '../recovered/live-backend.mjs';
+import { financeAI } from '../ai/provider';
 import type { Expense } from '../types/expense';
 import type { ChatMessage } from '../types/chat';
 import { d1GetChat, d1AddChat, d1ImportChat, d1ClearChat } from '../db/chat';
@@ -8,6 +9,53 @@ import { migrationComplete, migrateFinanceScope, readLegacyStorage, archiveLegac
 /** Keep production WebSockets and recurring alarms; all active business records use D1. */
 export class FinanceMemory extends LiveFinanceMemory {
   private scopeCache?: string;
+  private commandFlights = new Map<string, {input:unknown;promise:Promise<{status:number;body:Record<string,unknown>}>}>();
+
+  private async currentCommandResult(result:{status:number;body:Record<string,unknown>},scope:string):Promise<{status:number;body:Record<string,unknown>}> {
+    const original=(result.body.data as {expense?:Expense}|undefined)?.expense;
+    if(!original)return result;
+    const expense=(await d1GetExpenses(this.env.DB,scope)).find(entry=>entry.id===original.id);
+    return {status:result.status,body:{...result.body,message:expense?'This entry is already saved. No duplicate was added.':'This entry was removed. Resending did not restore it.',data:expense?{expense}:undefined}};
+  }
+
+  /** Durable receipts prevent a resend from repeating any financial action. */
+  async runChatCommand(body: Record<string, unknown>, headers: Record<string,string>, username: string): Promise<{status:number;body:Record<string,unknown>}> {
+    this.assertAvailable();
+    const scope=await this.scope();
+    if (body.userId !== scope || typeof body.commandId !== 'string') throw new Error('Invalid command scope');
+    const key='chat-command:'+JSON.stringify([username,body.commandId]);
+    const flight=this.commandFlights.get(key);
+    if (flight) {
+      if(flight.input!==body.input)return {status:409,body:{success:false,message:'Message content changed; resend refused.'}};
+      const result=await flight.promise;
+      if (!(body.resend && (result.body.commandKind === 'QUERY' || result.body.safeToRetry === true))) return this.currentCommandResult(result,scope);
+    }
+    const run=(async()=>{
+      const cached=await this.metadata<{input:string;state:string;result?:{status:number;body:Record<string,unknown>}}|null>(key,null);
+      if (cached && cached.input !== body.input) return {status:409,body:{success:false,message:'Message content changed; resend refused.'}};
+      if(cached?.result&&cached.result.status>=500){const expense=(await d1GetExpenses(this.env.DB,scope)).find(entry=>entry.idempotencyKey===body.commandId);if(expense){const result={status:200,body:{success:true,commandKind:'ADD_EXPENSE',message:'This entry is already saved. No duplicate was added.',data:{expense}}};await this.setMetadata(key,{input:body.input,state:'done',result});return result;}return {status:200,body:{success:true,needsReview:true,message:'The previous request could not be verified. Check Activity before adding another entry.'}};}
+      if (cached?.result && !(body.resend && (cached.result.body.commandKind === 'QUERY' || cached.result.body.safeToRetry === true))) return this.currentCommandResult(cached.result,scope);
+      if(!cached){const attempt=await this.metadata<{username?:string;legacyReceipt?:Record<string,unknown>}|null>('chat-attempt:'+body.commandId,null);if(attempt?.username===username&&attempt.legacyReceipt){const result={status:200,body:attempt.legacyReceipt};await this.setMetadata(key,{input:body.input,state:'done',result});return this.currentCommandResult(result,scope);}}
+      if (cached?.state === 'running') {
+        const expense=(await d1GetExpenses(this.env.DB,scope)).find(entry=>entry.idempotencyKey===body.commandId);
+        if(expense){const result={status:200,body:{success:true,commandKind:'ADD_EXPENSE',message:'This entry is already saved. No duplicate was added.',parsedBy:expense.parsedBy,data:{expense}}};await this.setMetadata(key,{input:body.input,state:'done',result});return result;}
+        return {status:200,body:{success:true,needsReview:true,message:'The previous request may have been interrupted. Check Activity before adding another entry.'}};
+      }
+      await this.setMetadata(key,{input:body.input,state:'running'});
+      const resultRequest=new Request('https://internal.invalid/command',{method:'POST',headers:{...headers,'Content-Type':'application/json'},body:JSON.stringify({...body,idempotencyKey:body.commandId,readOnlyResend:Boolean(body.readOnlyResend || (body.resend && cached?.result?.body.commandKind === 'QUERY'))})});
+      let result;
+      try {
+        const response=await executeVoiceCommand(resultRequest,{...this.env,AI:financeAI(this.env)});
+        result={status:response.status,body:await response.json() as Record<string,unknown>};
+      } catch {result={status:503,body:{success:false,message:'Unable to finish the request. Check your records before resending.'}};}
+      await this.setMetadata(key,{input:body.input,state:'done',result});
+      return result;
+    })();
+    const entry={input:body.input,promise:run};
+    this.commandFlights.set(key,entry);
+    try {return await run;} finally {if(this.commandFlights.get(key) === entry)this.commandFlights.delete(key);}
+  }
+
 
   private assertAvailable(): void {
     if (this.env.APP_STORAGE_MODE === 'migration') throw new Error('Storage migration in progress');

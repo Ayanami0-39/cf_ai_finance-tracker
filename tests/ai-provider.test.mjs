@@ -95,3 +95,16 @@ test('analysis is routed to DeepSeek while entry parsing stays on Workers AI', a
   assert.equal(fetch.mock.callCount(), 1);
   assert.equal(calls.length, 1);
 });
+
+test('Workers AI has bounded waiting without allowing its late result to replace a timeout', async t => {
+  let timeoutCallback, duration;
+  t.mock.method(globalThis,'setTimeout',(callback,ms)=>{timeoutCallback=callback;duration=ms;return 123;});
+  t.mock.method(globalThis,'clearTimeout',()=>{});
+  let release;const late=new Promise(resolve=>{release=resolve;});
+  const ai=financeAI({AI:{run(){return late;}}});
+  const response=ai.run(model,{...request,max_tokens:50});
+  assert.equal(duration,4500);
+  timeoutCallback();
+  await assert.rejects(response,/timed out/);
+  release({response:'Late answer'});
+});

@@ -781,6 +781,119 @@ for (const engine of [chromium, ...(process.env.TEST_WEBKIT ? [webkit] : [])]) {
       assert.equal(await page.locator('.fiscus-mobile .fiscus-entry-row').count(), 1);
       await page.close();
     });
+    await t.test('long-press resend aborts a pending reply, preserves drafts and reuses its command ID', async () => {
+      const page = await open(320, 568, { language: 'en' });
+      const requests = []; let releaseOld;
+      const gate = new Promise(resolve => { releaseOld = resolve; });
+      await page.route('**/api/voice-command', async route => {
+        const index = requests.length; requests.push(route.request().postDataJSON());
+        if(index === 0) await gate;
+        try { await route.fulfill({ json: { success: true, message: index === 0 ? 'Obsolete old reply' : 'Replacement reply' } }); } catch { /* The superseded browser request is aborted. */ }
+      });
+      const input=page.locator('.fiscus-mobile .fiscus-composer input');
+      await input.fill('Coffee 25'); await input.press('Enter');
+      while(requests.length<1) await page.waitForTimeout(20);
+      await input.fill('Keep my unsent draft');
+      const message=page.locator('.fiscus-mobile .fiscus-message-actions').filter({has:page.getByText('Coffee 25',{exact:true})});
+      await message.dispatchEvent('pointerdown',{button:0,clientX:100,clientY:100,pointerType:'touch'});
+      const menu=page.getByRole('menu',{name:'Message actions'});await menu.waitFor();
+      assert.equal(requests.length,1,'opening the menu never resends');
+      const bounds=await menu.boundingBox();assert.ok(bounds.x>=0&&bounds.x+bounds.width<=321);
+      if(process.env.UI_SCREENSHOT_DIR)await page.screenshot({path:`${process.env.UI_SCREENSHOT_DIR}/${engine.name()}-resend-menu-320.png`});
+      await menu.getByRole('menuitem',{name:'Resend message',exact:true}).click();
+      await page.locator('.fiscus-mobile').getByText('Replacement reply',{exact:true}).waitFor();
+      releaseOld(); await page.waitForTimeout(100);
+      assert.equal(requests.length,2);
+      assert.equal(requests[0].commandId,requests[1].commandId);
+      assert.equal(requests[0].idempotencyKey,requests[1].idempotencyKey);
+      assert.equal(requests[1].resend,true);
+      assert.equal(await page.locator('.fiscus-mobile').getByText('Coffee 25',{exact:true}).count(),1);
+      assert.equal(await page.getByText('Obsolete old reply',{exact:true}).count(),0);
+      assert.equal(await input.inputValue(),'Keep my unsent draft');
+      assert.equal((await queue(page)).length,0,'intentional cancellation never queues another financial command');
+      await page.close();
+    });
+    await t.test('resending a completed reply replaces it after reload and supports keyboard actions', async () => {
+      const page=await open(390,844,{language:'en'}), stored=new Map(messages.map(message=>[message.id,message]));
+      let calls=0,release;const gate=new Promise(resolve=>{release=resolve;});
+      await page.route('**/api/chat/**',route=>{
+        if(route.request().method()!=='POST')return route.fulfill({json:{success:true,messages:[...stored.values()]}});
+        const body=route.request().postDataJSON();const replyId='reply:'+body.id;
+        const supersededReplyId=body.role==='user'&&stored.has(replyId)?replyId:undefined;
+        if(supersededReplyId)stored.delete(supersededReplyId);stored.set(body.id,body);
+        return route.fulfill({json:{success:true,message:body,supersededReplyId}});
+      });
+      await page.route('**/api/bootstrap',route=>route.fulfill({json:{success:true,account,family:null,expenses,chat:{messages:[...stored.values()].sort((a,b)=>a.timestamp-b.timestamp),hasMore:false}}}));
+      await page.route('**/api/voice-command',async route=>{calls++;if(calls===2)await gate;return route.fulfill({json:{success:true,message:calls===1?'First complete answer':'New complete answer'}});});
+      const input=page.locator('.fiscus-mobile .fiscus-composer input');await input.fill('Summarize spending');await input.press('Enter');
+      await page.locator('.fiscus-mobile').getByText('First complete answer',{exact:true}).waitFor();
+      const message=page.locator('.fiscus-mobile .fiscus-message-actions').filter({has:page.getByText('Summarize spending',{exact:true})});
+      await message.focus();await page.keyboard.press('Shift+F10');
+      await page.getByRole('menuitem',{name:'Resend message',exact:true}).waitFor();await page.keyboard.press('Escape');
+      assert.equal(calls,1);
+      await message.dispatchEvent('contextmenu');await page.getByRole('menuitem',{name:'Resend message',exact:true}).click();
+      while(calls<2)await page.waitForTimeout(20);
+      assert.equal(await page.getByText('First complete answer',{exact:true}).count(),0);
+      release();await page.locator('.fiscus-mobile').getByText('New complete answer',{exact:true}).waitFor();
+      await page.reload();await page.locator('.fiscus-mobile').getByText('New complete answer',{exact:true}).waitFor();
+      assert.equal(await page.locator('.fiscus-mobile').getByText('Summarize spending',{exact:true}).count(),1);
+      assert.equal(await page.getByText('First complete answer',{exact:true}).count(),0);
+      assert.equal([...stored.values()].filter(message=>message.role==='ai').length,1);
+      await page.close();
+    });
+    await t.test('scrolling cancels the long press and another member message has no resend action', async () => {
+      const page=await open(390,844,{language:'en',messages:[...messages,{id:'foreign-user-message',role:'user',content:'Another member message',byId:'another',timestamp:2}]});
+      const foreign=page.locator('.fiscus-mobile .fiscus-message-actions').filter({has:page.getByText('Another member message',{exact:true})});
+      await foreign.dispatchEvent('contextmenu');assert.equal(await page.getByRole('menu',{name:'Message actions'}).count(),0);
+      const own=page.locator('.fiscus-mobile .fiscus-message-actions').filter({has:page.getByText(chatText,{exact:true})});
+      await own.dispatchEvent('pointerdown',{button:0,clientX:100,clientY:100,pointerType:'touch'});
+      await own.dispatchEvent('pointermove',{clientX:100,clientY:140,pointerType:'touch'});
+      await page.waitForTimeout(600);assert.equal(await page.getByRole('menu',{name:'Message actions'}).count(),0);
+      await page.close();
+    });
+    await t.test('offline chat synchronizes its reply once and clears its pending status', async () => {
+      const page=await open(390,844,{language:'en'}),stored=new Map(messages.map(message=>[message.id,message]));let commands=0;
+      await page.route('**/api/chat/**',route=>{const body=route.request().postDataJSON();stored.set(body.id,body);return route.fulfill({json:{success:true,message:body}});});
+      await page.route('**/api/bootstrap',route=>route.fulfill({json:{success:true,account,family:null,expenses,chat:{messages:[...stored.values()],hasMore:false}}}));
+      await page.route('**/api/voice-command',route=>{commands++;return route.fulfill({json:{success:true,message:'Offline entry saved once'}});});
+      await page.evaluate(()=>{Object.defineProperty(navigator,'onLine',{configurable:true,get:()=>false});window.dispatchEvent(new Event('offline'));});
+      const input=page.locator('.fiscus-mobile .fiscus-composer input');await input.fill('Offline coffee 25');await input.press('Enter');
+      await page.locator('.fiscus-mobile').getByText('Offline coffee 25',{exact:true}).waitFor();
+      await page.waitForFunction(()=>document.body.textContent.includes('Saved on this device'));
+      assert.equal((await queue(page)).length,1);
+      await page.evaluate(()=>{Object.defineProperty(navigator,'onLine',{configurable:true,get:()=>true});window.dispatchEvent(new Event('online'));});
+      await page.locator('.fiscus-mobile').getByText('Offline entry saved once',{exact:true}).waitFor();
+      assert.equal(commands,1);
+      assert.equal((await queue(page)).length,0);
+      assert.equal(await page.locator('.fiscus-mobile .fiscus-chat-request-status').count(),0);
+      assert.equal([...stored.values()].filter(message=>message.role==='ai').length,1);
+      await page.reload();await page.locator('.fiscus-mobile').getByText('Offline entry saved once',{exact:true}).waitFor();
+      assert.equal(await page.locator('.fiscus-mobile').getByText('Offline coffee 25',{exact:true}).count(),1);
+      await page.close();
+    });
+    await t.test('a timed-out AI response can be resent without queueing a rejected command', async () => {
+      const page=await open(390,844,{language:'en'});let calls=0;const commands=[];
+      await page.route('**/api/voice-command',route=>{calls++;commands.push(route.request().postDataJSON());return calls===1?route.fulfill({status:400,json:{success:false,safeToRetry:true,message:'AI response took too long. Long press your message to resend.'}}):route.fulfill({json:{success:true,message:'Retry finished successfully'}});});
+      const input=page.locator('.fiscus-mobile .fiscus-composer input');await input.fill('Coffee 25');await input.press('Enter');
+      await page.locator('.fiscus-mobile').getByText('AI response took too long. Long press your message to resend.',{exact:true}).waitFor();
+      assert.equal((await queue(page)).length,0);
+      const message=page.locator('.fiscus-mobile .fiscus-message-actions').filter({has:page.getByText('Coffee 25',{exact:true})});
+      await message.dispatchEvent('contextmenu');await page.getByRole('menuitem',{name:'Resend message',exact:true}).click();
+      await page.locator('.fiscus-mobile').getByText('Retry finished successfully',{exact:true}).waitFor();
+      assert.equal(commands[0].commandId,commands[1].commandId);assert.equal(calls,2);
+      assert.equal((await queue(page)).length,0);
+      await page.close();
+    });
+    await t.test('a rejected resend preparation never sends or queues another financial command', async () => {
+      const page=await open(390,844,{language:'en',messages:[...messages,{id:'protected-old-message',role:'user',byId:'tester',content:'Old coffee record',timestamp:2}]});let commands=0;
+      await page.route('**/api/chat/**',route=>route.fulfill({status:409,json:{success:false,error:'This attempt was superseded'}}));
+      await page.route('**/api/voice-command',route=>{commands++;return route.fulfill({json:{success:true,message:'Unexpected'}});});
+      const message=page.locator('.fiscus-mobile .fiscus-message-actions').filter({has:page.getByText('Old coffee record',{exact:true})});
+      await message.dispatchEvent('contextmenu');await page.getByRole('menuitem',{name:'Resend message',exact:true}).click();
+      await page.locator('.fiscus-mobile .fiscus-chat-request-status').getByText('Check Activity before adding another entry',{exact:true}).waitFor();
+      assert.equal(commands,0);assert.equal((await queue(page)).length,0);
+      await page.close();
+    });
     if (process.env.UI_SCREENSHOT_DIR) {
       const directory = process.env.UI_SCREENSHOT_DIR; await mkdir(directory, { recursive: true });
       for (const [width, height, language] of [[390, 844, 'zh'], [390, 844, 'en'], [1440, 900, 'en']]) {

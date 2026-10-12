@@ -70,3 +70,6 @@ declare const worker: {
   scheduled(controller: ScheduledController, env: Env, ctx?: ExecutionContext): Promise<void>;
 };
 export default worker;
+
+export function executeVoiceCommand(request: Request, env: Env): Promise<Response>;
+export function detectFastIntent(input: string): string | null;

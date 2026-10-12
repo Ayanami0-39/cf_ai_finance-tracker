@@ -332,6 +332,26 @@ account or ledger stay queued, with a message asking the user to switch back;
 they are never reassigned to the current ledger. Do not clear browser website
 data while entries are pending: unsynced entries are not yet in a D1 backup.
 
+Chat messages support long press (500 ms), right-click or Shift+F10 to open
+Resend message. Resend keeps the original user bubble and replaces its associated
+AI reply. Browser requests are aborted, and server-side attempt tokens reject late
+reply saves; superseded replies are archived in scoped metadata before replacement.
+Completed financial commands reuse Durable Object/D1 receipts and the original
+mutation ID, so resend does not add a duplicate, repeat a deletion, or restore a
+removed expense. Edited records are read again when returning a saved confirmation.
+Legacy messages without a provable command relationship are handled conservatively.
+No database schema migration is needed; receipts use existing scope metadata.
+
+Clear entries and financial questions skip AI intent classification. Completed
+answers appear immediately instead of a simulated typewriter animation, and each
+message shows its pending state and elapsed time. Workers AI intent classification
+has a 4.5-second deadline; other AI requests have a 12-second deadline. A timed-out
+expense parse is retryable and does not book a guessed amount. Safe pre-write
+failures can be resent; an uncertain interrupted financial command requires Activity
+review rather than automatic replay. Retry dates use the original message time.
+Offline chat replies are persisted after sync, and background snapshots are merged
+by attempt and account/scope identity so they cannot bring back a superseded reply.
+
 Monthly/weekly summaries and financial answers use DeepSeek when `DEEPSEEK-API-KEY`
 is present. Transaction parsing, intent classification, deletion matching and
 subscription commands stay on Workers AI by default. These requests carry an

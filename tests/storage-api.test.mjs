@@ -244,10 +244,10 @@ test('the deployed report and chat routes use the DeepSeek adapter while retaini
   assert.equal(chat.success, true);
   assert.equal(chat.data.expense.amount, 25);
   assert.equal((await db.prepare('SELECT COUNT(*) AS count FROM expenses').first()).count, 2);
-  assert.equal(calls.length, 3, 'one report call and two existing chat calls');
+  assert.equal(calls.length, 2, 'one report call and one parsing call for a clear entry');
   assert.equal(JSON.stringify({ report, chat }).includes('synthetic-integration-key'), false);
   assert.equal((await request('/api/report', 'POST', { userId: 'user_someone_else', month: '2026-08' })).status, 403);
-  assert.equal(calls.length, 3, 'unauthorized scopes never reach either AI provider');
+  assert.equal(calls.length, 2, 'unauthorized scopes never reach either AI provider');
 });
 
 test('monthly, weekly and chat analysis use DeepSeek while chat entry remains on Workers AI', async t => {
@@ -279,11 +279,161 @@ test('monthly, weekly and chat analysis use DeepSeek while chat entry remains on
   const answer = await (await request('/api/voice-command', 'POST', { userId: 'user_manual', input: '这个月花了多少钱' })).json();
   assert.equal(answer.message, 'Synthetic summary and suggestion');
   assert.equal(deepseekCalls, 3);
-  assert.equal(workerCalls, 1, 'chat analysis uses Workers AI only for classification');
+  assert.equal(workerCalls, 0, 'clear queries skip intent classification');
   assert.equal((await db.prepare('SELECT COUNT(*) AS count FROM expenses').first()).count, 1);
   const entry = await (await request('/api/voice-command', 'POST', { userId: 'user_manual', input: '今天买咖啡花了25元', idempotencyKey: 'mixed-provider-entry-001' })).json();
   assert.equal(entry.success, true);
   assert.equal(entry.data.expense.amount, 25);
-  assert.equal(workerCalls, 3);
+  assert.equal(workerCalls, 1);
   assert.equal(deepseekCalls, 3, 'record commands never call DeepSeek');
+});
+
+test('resend replaces only its own AI reply and rejects superseded attempts across reloads', async t => {
+  const { db, request } = await manualSession(t);
+  const user = { id:'resend-message-0001', role:'user', content:'这个月花了多少钱', timestamp:10, clientMutationId:'resend-message-0001', requestId:'attempt-request-0001', attemptNo:1 };
+  const post = body => request('/api/chat/user_manual','POST',body);
+  assert.equal((await post(user)).status,200);
+  const reply={id:'reply:'+user.id,role:'ai',replyTo:user.id,requestId:user.requestId,attemptNo:1,content:'Original answer',timestamp:11};
+  assert.equal((await post(reply)).status,200);
+  assert.equal((await post({...user,requestId:'attempt-request-0002',attemptNo:2})).status,200);
+  assert.equal((await post({...reply,content:'Late obsolete answer'})).status,409);
+  assert.equal((await post({...user,requestId:'outdated-request-0003'})).status,409);
+  assert.equal((await post({...reply,requestId:'attempt-request-0002',attemptNo:2,content:'Replacement answer',timestamp:12})).status,200);
+  const chat=await (await request('/api/chat/user_manual')).json();
+  assert.equal(chat.messages.length,2);
+  assert.equal(chat.messages.filter(message=>message.role==='user').length,1);
+  assert.equal(chat.messages.find(message=>message.role==='ai').content,'Replacement answer');
+  const history=await db.prepare("SELECT value_json FROM app_scope_metadata WHERE key LIKE 'superseded-chat:%'").all();
+  assert.ok(history.results.some(row=>JSON.parse(row.value_json).content==='Original answer'));
+  assert.equal((await post({...user,content:'Changed money amount',requestId:'attempt-request-0004',attemptNo:3})).status,409);
+  await db.prepare('INSERT INTO app_chat_messages(scope,id,timestamp,record_json) VALUES(?,?,?,?)').bind('user_manual','other-author-0001',1,JSON.stringify({...user,id:'other-author-0001',byId:'someone_else'})).run();
+  assert.equal((await post({...user,id:'other-author-0001'})).status,403);
+});
+
+test('concurrent resend and later retries reuse a durable command receipt, including after deletion', async t => {
+  const { env, db, request } = await manualSession(t);
+  let release, calls=0;const gate=new Promise(resolve=>{release=resolve;});
+  env.AI={async run(){calls++;await gate;return {response:'{"type":"expense","amount":25,"merchant":"Coffee","category":"Food & Dining"}'};}};
+  const body={userId:'user_manual',input:'今天买咖啡花了25元',commandId:'safe-command-0001'};
+  const first=request('/api/voice-command','POST',body);
+  while(!calls)await new Promise(resolve=>setTimeout(resolve,5));
+  const second=request('/api/voice-command','POST',{...body,resend:true});
+  release();
+  const results=await Promise.all([first,second]);
+  assert.ok(results.every(response=>response.status===200));
+  const payloads=await Promise.all(results.map(response=>response.json()));
+  assert.equal(payloads[0].data.expense.id,payloads[1].data.expense.id);
+  assert.equal(calls,1);
+  assert.equal((await db.prepare('SELECT COUNT(*) AS count FROM expenses').first()).count,1);
+  const third=await (await request('/api/voice-command','POST',{...body,resend:true})).json();
+  assert.equal(third.data.expense.id,payloads[0].data.expense.id);
+  assert.equal(calls,1);
+  await request('/api/expenses/user_manual/'+third.data.expense.id,'DELETE');
+  await request('/api/voice-command','POST',{...body,resend:true});
+  assert.deepEqual((await (await request('/api/expenses/user_manual')).json()).expenses,[]);
+  assert.equal((await db.prepare('SELECT COUNT(*) AS count FROM expenses').first()).count,1);
+  assert.equal((await request('/api/voice-command','POST',{...body,input:'Changed input'})).status,409);
+});
+
+test('legacy resend and an uncertain interrupted command cannot create or repeat financial records', async t => {
+  const { db, env, request } = await manualSession(t);
+  let calls=0;env.AI={async run(){calls++;throw new Error('Unexpected AI call');}};
+  const id='legacy-message-0001';
+  await db.prepare('INSERT INTO app_chat_messages(scope,id,timestamp,record_json) VALUES(?,?,?,?)').bind('user_manual',id,1,JSON.stringify({id,role:'user',content:'今天买咖啡花了25元',timestamp:1,byId:'manual'})).run();
+  const prepared=await (await request('/api/chat/user_manual','POST',{id,role:'user',content:'今天买咖啡花了25元',requestId:'legacy-attempt-0001',attemptNo:1})).json();
+  assert.equal(prepared.legacyResend,true);
+  assert.equal((await request('/api/voice-command','POST',{userId:'user_manual',input:'今天买咖啡花了25元',commandId:id,resend:true})).status,200);
+  assert.equal(calls,0);
+  assert.equal((await db.prepare('SELECT COUNT(*) AS count FROM expenses').first()).count,0);
+  const key='chat-command:'+JSON.stringify(['manual','interrupted-command-0001']);
+  await db.prepare('INSERT INTO app_scope_metadata(scope,key,value_json) VALUES(?,?,?)').bind('user_manual',key,JSON.stringify({input:'今天买咖啡花了25元',state:'running'})).run();
+  const interrupted=await (await request('/api/voice-command','POST',{userId:'user_manual',input:'今天买咖啡花了25元',commandId:'interrupted-command-0001',resend:true})).json();
+  assert.equal(interrupted.needsReview,true);
+  assert.equal(calls,0);
+});
+
+test('fast routing recognizes clear entries and queries but keeps destructive or hypothetical messages safe', async () => {
+  const {detectFastIntent}=await loadWorker('worker/recovered/live-backend.mjs');
+  for(const input of ['今天买咖啡花了25元','Coffee 25','午饭30'])assert.equal(detectFastIntent(input),'ADD_EXPENSE');
+  for(const input of ['这个月花了多少钱','建议我如何减少支出','Should I delete this expense?'])assert.equal(detectFastIntent(input),'QUERY');
+  for(const input of ['删除咖啡记录','每月房租2000','I will buy a watch for 200','October 2026'])assert.equal(detectFastIntent(input),null);
+});
+
+test('resending a linked legacy entry returns its saved record without another AI call or financial write', async t => {
+  const {env,db,request}=await manualSession(t);let calls=0;
+  env.AI={async run(){calls++;return {response:'{"type":"expense","amount":25,"merchant":"Coffee","category":"Food & Dining"}'};}};
+  const input='今天买咖啡花了25元';
+  const result=await (await request('/api/voice-command','POST',{userId:'user_manual',input,idempotencyKey:'legacy-original-command'})).json();
+  const user={id:'legacy-linked-user-001',role:'user',content:input,timestamp:1,byId:'manual'};
+  await request('/api/chat/user_manual','POST',user);
+  await request('/api/chat/user_manual','POST',{id:'legacy-linked-reply-001',role:'ai',content:'Original confirmation',timestamp:2,expense:result.data.expense});
+  await request('/api/chat/user_manual','POST',{...user,attemptNo:1,requestId:'legacy-new-attempt-001'});
+  const repeated=await (await request('/api/voice-command','POST',{userId:'user_manual',input,commandId:user.id,resend:true})).json();
+  assert.equal(repeated.data.expense.id,result.data.expense.id);
+  assert.equal(calls,1);
+  assert.equal((await db.prepare('SELECT COUNT(*) AS count FROM expenses').first()).count,1);
+});
+
+test('legacy queued retries cannot resurrect a soft-deleted expense', async t => {
+  const {env,db,request}=await manualSession(t);
+  env.AI={async run(){return {response:'{"type":"expense","amount":25,"merchant":"Coffee","category":"Food & Dining"}'};}};
+  const body={userId:'user_manual',input:'今天买咖啡花了25元',idempotencyKey:'legacy-queued-command-001'};
+  const first=await (await request('/api/voice-command','POST',body)).json();
+  await request('/api/expenses/user_manual/'+first.data.expense.id,'DELETE');
+  const retry=await (await request('/api/voice-command','POST',body)).json();
+  assert.equal(retry.success,true);
+  assert.equal(retry.data?.expense,undefined);
+  assert.deepEqual((await (await request('/api/expenses/user_manual')).json()).expenses,[]);
+  assert.equal((await db.prepare('SELECT COUNT(*) AS count FROM expenses').first()).count,1);
+});
+
+test('AI timeout retry is safe to re-execute and keeps the original message date', async t => {
+  const {env,db,request}=await manualSession(t);let calls=0;
+  env.AI={async run(){calls++;if(calls===1)throw new Error('AI response timed out');return {response:'{"type":"expense","amount":25,"merchant":"Coffee","category":"Food & Dining"}'};}};
+  const user={id:'timeout-retry-user-001',role:'user',content:'Coffee 25',timestamp:Date.parse('2026-08-31T10:00:00Z'),attemptNo:1,requestId:'timeout-attempt-0001'};
+  assert.equal((await request('/api/chat/user_manual','POST',user)).status,200);
+  const body={userId:'user_manual',input:user.content,commandId:user.id};
+  const timed=await request('/api/voice-command','POST',body);assert.equal(timed.status,400);
+  assert.equal((await timed.json()).safeToRetry,true);
+  assert.equal((await db.prepare('SELECT COUNT(*) AS count FROM expenses').first()).count,0,'a timeout never books a guessed amount');
+  const retry=await (await request('/api/voice-command','POST',{...body,resend:true})).json();
+  assert.equal(retry.success,true);assert.equal(retry.data.expense.date,'2026-08-31');
+  assert.equal((await db.prepare('SELECT COUNT(*) AS count FROM expenses').first()).count,1);
+  assert.equal(calls,2);
+});
+
+test('resend reads an edited saved record instead of returning stale financial fields', async t => {
+  const {env,request}=await manualSession(t);let calls=0;
+  env.AI={async run(){calls++;return {response:'{"type":"expense","amount":25,"merchant":"Coffee","category":"Food & Dining"}'};}};
+  const body={userId:'user_manual',input:'今天买咖啡花了25元',commandId:'edited-resend-command-001'};
+  const first=await (await request('/api/voice-command','POST',body)).json();
+  await request('/api/expenses/user_manual/'+first.data.expense.id,'PATCH',{amount:35,merchant:'Edited coffee'});
+  const retry=await (await request('/api/voice-command','POST',{...body,resend:true})).json();
+  assert.equal(retry.data.expense.amount,35);assert.equal(retry.data.expense.merchant,'Edited coffee');assert.equal(calls,1);
+});
+
+test('a family legacy receipt is linked only when its expense belongs to the sender and matches the message', async t => {
+  const {env,registry,request}=await manualSession(t);
+  await registry.register('owner','password');const {family}=await registry.createFamily('owner');await registry.joinFamily('manual',family.code);
+  let calls=0;env.AI={async run(){calls++;return {response:'{"type":"expense","amount":25,"merchant":"Coffee","category":"Food & Dining"}'};}};
+  const input='今天买咖啡花了25元';
+  const first=await (await request('/api/voice-command','POST',{userId:family.scopeId,input,memberId:'manual',idempotencyKey:'family-legacy-command-001'})).json();
+  const user={id:'family-legacy-user-001',role:'user',content:input,timestamp:1,byId:'manual'};
+  await request('/api/chat/'+family.scopeId,'POST',user);
+  await request('/api/chat/'+family.scopeId,'POST',{id:'family-legacy-reply-001',role:'ai',content:'Saved',timestamp:2,expense:first.data.expense});
+  const prepared=await (await request('/api/chat/'+family.scopeId,'POST',{...user,requestId:'family-attempt-0001',attemptNo:1})).json();
+  assert.equal(prepared.supersededReplyId,'family-legacy-reply-001');
+  const retry=await (await request('/api/voice-command','POST',{userId:family.scopeId,input,commandId:user.id,resend:true})).json();
+  assert.equal(retry.data.expense.id,first.data.expense.id);assert.equal(calls,1);
+});
+
+test('a failed command receipt is reconciled with saved data without rerunning its financial action', async t => {
+  const {env,db,request}=await manualSession(t);let calls=0;env.AI={async run(){calls++;throw new Error('Must not rerun');}};
+  const commandId='failed-receipt-command-001',input='Original salary entry';
+  const saved=await (await request('/api/expenses','POST',{...manualBody,idempotencyKey:commandId})).json();
+  const key='chat-command:'+JSON.stringify(['manual',commandId]);
+  await db.prepare('INSERT INTO app_scope_metadata(scope,key,value_json) VALUES(?,?,?)').bind('user_manual',key,JSON.stringify({input,state:'done',result:{status:500,body:{success:false,commandKind:'ADD_EXPENSE'}}})).run();
+  const result=await (await request('/api/voice-command','POST',{userId:'user_manual',input,commandId,resend:true})).json();
+  assert.equal(result.success,true);assert.equal(result.data.expense.id,saved.expense.id);assert.equal(calls,0);
+  assert.equal((await db.prepare('SELECT COUNT(*) AS count FROM expenses').first()).count,1);
 });
