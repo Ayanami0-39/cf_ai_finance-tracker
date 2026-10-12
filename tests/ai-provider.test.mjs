@@ -8,9 +8,9 @@ const model = '@cf/zai-org/glm-4.7-flash';
 const request = { messages: [{ role: 'user', content: 'Synthetic coffee entry' }], max_tokens: 4000, chat_template_kwargs: { enable_thinking: false } };
 const env = { AI_PROVIDER: 'deepseek', 'DEEPSEEK-API-KEY': 'test-only-key' };
 
-test('without the DeepSeek secret, the original Workers AI binding is preserved', () => {
-  const original = { run() {} };
-  assert.equal(financeAI({ AI: original }), original);
+test('without the DeepSeek secret, analysis safely uses Workers AI without internal markers', async () => {
+  const original = { async run(name, input) { assert.equal(name, model); assert.equal(input.financeTask, undefined); return { response: 'Workers AI' }; } };
+  assert.deepEqual(await financeAI({ AI: original }).run(model, { ...request, financeTask: 'analysis' }), { response: 'Workers AI' });
 });
 
 test('the exact deployed secret name routes text calls to the verified Flash model without leaking it', async t => {
@@ -75,7 +75,23 @@ test('non-finance models retain their original binding and classification keeps 
   t.mock.method(globalThis, 'fetch', () => { throw new Error('DeepSeek must not be called'); });
   for (const provider of [undefined, 'cloudflare']) {
     const ai = financeAI({ AI: original, AI_PROVIDER: provider, 'DEEPSEEK-API-KEY': 'retained-key' });
-    assert.equal(ai, original);
     assert.deepEqual(await ai.run(model, request), { response: 'Workers AI' });
   }
+});
+
+test('analysis is routed to DeepSeek while entry parsing stays on Workers AI', async t => {
+  t.mock.method(console, 'info', () => {});
+  const calls = [];
+  const original = { async run(name, input) { calls.push({ name, input }); return { response: 'Workers AI' }; } };
+  const fetch = t.mock.method(globalThis, 'fetch', async (url, options) => {
+    assert.equal(url, 'https://api.deepseek.com/chat/completions');
+    assert.equal(JSON.parse(options.body).financeTask, undefined, 'internal routing marker stays server-side');
+    return Response.json({ choices: [{ finish_reason: 'stop', message: { content: 'DeepSeek summary and suggestion' } }] });
+  });
+  const ai = financeAI({ AI: original, 'DEEPSEEK-API-KEY': 'retained-key' });
+  assert.deepEqual(await ai.run(model, request), { response: 'Workers AI' });
+  assert.equal(fetch.mock.callCount(), 0);
+  assert.deepEqual(await ai.run(model, { ...request, financeTask: 'analysis' }), { response: 'DeepSeek summary and suggestion' });
+  assert.equal(fetch.mock.callCount(), 1);
+  assert.equal(calls.length, 1);
 });

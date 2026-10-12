@@ -332,13 +332,16 @@ account or ledger stay queued, with a message asking the user to switch back;
 they are never reassigned to the current ledger. Do not clear browser website
 data while entries are pending: unsynced entries are not yet in a D1 backup.
 
-Workers AI is the default text AI provider, including when a DeepSeek key is retained.
+Monthly/weekly summaries and financial answers use DeepSeek when `DEEPSEEK-API-KEY`
+is present. Transaction parsing, intent classification, deletion matching and
+subscription commands stay on Workers AI by default. These requests carry an
+internal analysis marker; the marker is never forwarded to the provider.
 To explicitly opt into the official DeepSeek chat-completions endpoint, set Worker
 variable `AI_PROVIDER=deepseek` and secret `DEEPSEEK-API-KEY`. The model verified with this account's
 `/models` response is `deepseek-flash`. The key remains server-side; adding it to a
-frontend environment file would expose it. With `AI_PROVIDER=cloudflare`, an unset provider, or no DeepSeek secret, the existing
-Workers AI binding serves these calls. No database migration or new API route is
-required. Requests disable thinking, cap output at 600 tokens (retaining smaller
+frontend environment file would expose it. An unset provider or `AI_PROVIDER=cloudflare` keeps record commands on Workers AI.
+Without the DeepSeek secret, all calls use Workers AI. No database migration or new API route is
+required. DeepSeek requests disable thinking, cap output at 600 tokens (retaining smaller
 classification/query limits), and abort after 12 seconds. Existing local parsing and
 report fallbacks handle provider failures without an additional slow AI request.
 Provider timing logs contain only model, duration and HTTP status.

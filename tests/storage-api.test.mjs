@@ -249,3 +249,41 @@ test('the deployed report and chat routes use the DeepSeek adapter while retaini
   assert.equal((await request('/api/report', 'POST', { userId: 'user_someone_else', month: '2026-08' })).status, 403);
   assert.equal(calls.length, 3, 'unauthorized scopes never reach either AI provider');
 });
+
+test('monthly, weekly and chat analysis use DeepSeek while chat entry remains on Workers AI', async t => {
+  const { env, db, request } = await manualSession(t);
+  assert.equal((await request('/api/expenses', 'POST', manualBody)).status, 200);
+  env['DEEPSEEK-API-KEY'] = 'synthetic-analysis-key';
+  let workerCalls = 0, deepseekCalls = 0;
+  env.AI = { async run(model, options) {
+    workerCalls++;
+    const system = options.messages[0].content;
+    assert.ok(!options.financeTask, 'analysis must never reach Workers AI in this configuration');
+    if (system.includes('classify user intent')) return { response: JSON.stringify({ intent: options.messages[1].content.includes('USER INPUT: "这个月花了多少钱"') ? 'QUERY' : 'ADD_EXPENSE', confidence: 1 }) };
+    assert.ok(system.includes('transaction-parsing engine'));
+    return { response: '{"type":"expense","amount":25,"merchant":"Coffee","category":"Food & Dining"}' };
+  } };
+  t.mock.method(console, 'info', () => {});
+  t.mock.method(globalThis, 'fetch', async (url, options) => {
+    assert.equal(url, 'https://api.deepseek.com/chat/completions');
+    const body = JSON.parse(options.body);
+    assert.equal(body.model, 'deepseek-flash');
+    assert.equal(body.financeTask, undefined);
+    deepseekCalls++;
+    return Response.json({ choices: [{ finish_reason: 'stop', message: { content: 'Synthetic summary and suggestion' } }] });
+  });
+  const month = await (await request('/api/report', 'POST', { userId: 'user_manual', month: '2026-08' })).json();
+  assert.equal(month.report, 'Synthetic summary and suggestion');
+  const week = await (await request('/api/report/weekly-insights', 'POST', { userId: 'user_manual', weekStart: '2026-08-31' })).json();
+  assert.equal(week.report, 'Synthetic summary and suggestion');
+  const answer = await (await request('/api/voice-command', 'POST', { userId: 'user_manual', input: '这个月花了多少钱' })).json();
+  assert.equal(answer.message, 'Synthetic summary and suggestion');
+  assert.equal(deepseekCalls, 3);
+  assert.equal(workerCalls, 1, 'chat analysis uses Workers AI only for classification');
+  assert.equal((await db.prepare('SELECT COUNT(*) AS count FROM expenses').first()).count, 1);
+  const entry = await (await request('/api/voice-command', 'POST', { userId: 'user_manual', input: '今天买咖啡花了25元', idempotencyKey: 'mixed-provider-entry-001' })).json();
+  assert.equal(entry.success, true);
+  assert.equal(entry.data.expense.amount, 25);
+  assert.equal(workerCalls, 3);
+  assert.equal(deepseekCalls, 3, 'record commands never call DeepSeek');
+});

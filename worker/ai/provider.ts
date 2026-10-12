@@ -5,6 +5,7 @@ type ChatRequest = {
   messages: Array<{ role: string; content: string }>;
   max_tokens?: number;
   temperature?: number;
+  financeTask?: 'analysis';
 };
 type Completion = {
   choices?: Array<{ finish_reason?: string; message?: { content?: string } }>;
@@ -13,10 +14,11 @@ type Completion = {
 /** Adapt the verified DeepSeek endpoint to the deployed app's existing AI.run contract. */
 export function financeAI(env: Env): Ai {
   const key = env['DEEPSEEK-API-KEY'];
-  if (env.AI_PROVIDER !== 'deepseek' || !key) return env.AI;
+  if (!key && !env.AI) return env.AI;
   const original = env.AI as unknown as { run(model: string, input: unknown): Promise<unknown> };
   const run = async (model: string, options: ChatRequest) => {
-    if (model !== GLM_MODEL) return original.run(model, options);
+    const { financeTask, ...input } = options;
+    if (!key || model !== GLM_MODEL || (financeTask !== 'analysis' && env.AI_PROVIDER !== 'deepseek')) return original.run(model, input);
     const startedAt = Date.now();
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 12000);

@@ -1869,7 +1869,8 @@ async function queryExpenses(AI, question, expenses) {
         ],
         temperature: QUERY_CONFIG.temperature,
         max_tokens: QUERY_CONFIG.max_tokens,
-        ...GLM_THINKING_OFF
+        ...GLM_THINKING_OFF,
+        financeTask: "analysis"
       }
     );
     const text = stripThinking(extractAiText(response));
@@ -2100,7 +2101,8 @@ ${JSON.stringify(data)}` }
         ],
         temperature: 0.6,
         max_tokens: 600,
-        ...GLM_THINKING_OFF
+        ...GLM_THINKING_OFF,
+        financeTask: "analysis"
       }
     );
     const text = stripThinking(extractAiText(response));
@@ -2192,7 +2194,8 @@ ${JSON.stringify(data)}` }
           ],
           temperature: 0.6,
           max_tokens: 500,
-          ...GLM_THINKING_OFF
+          ...GLM_THINKING_OFF,
+          financeTask: "analysis"
         }
       );
       const text = stripThinking(extractAiText(response));
