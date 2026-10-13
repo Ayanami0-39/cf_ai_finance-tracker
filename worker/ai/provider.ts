@@ -18,14 +18,15 @@ export function financeAI(env: Env): Ai {
   const original = env.AI as unknown as { run(model: string, input: unknown): Promise<unknown> };
   const run = async (model: string, options: ChatRequest) => {
     const { financeTask, ...input } = options;
+    const timeoutMs = options.max_tokens === 50 ? 30000 : 12000;
     if (!key || model !== GLM_MODEL || (financeTask !== 'analysis' && env.AI_PROVIDER !== 'deepseek')) {
       let timeout: ReturnType<typeof setTimeout> | undefined;
-      try { return await Promise.race([original.run(model, input), new Promise<never>((_resolve, reject) => { timeout=setTimeout(()=>reject(new Error('AI response timed out')),options.max_tokens===50?4500:12000); })]); }
+      try { return await Promise.race([original.run(model, input), new Promise<never>((_resolve, reject) => { timeout=setTimeout(()=>reject(new Error('AI response timed out')),timeoutMs); })]); }
       finally { if(timeout)clearTimeout(timeout); }
     }
     const startedAt = Date.now();
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 12000);
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
     let status = 0;
     try {
       const response = await fetch('https://api.deepseek.com/chat/completions', {

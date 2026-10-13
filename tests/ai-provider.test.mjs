@@ -103,7 +103,7 @@ test('Workers AI has bounded waiting without allowing its late result to replace
   let release;const late=new Promise(resolve=>{release=resolve;});
   const ai=financeAI({AI:{run(){return late;}}});
   const response=ai.run(model,{...request,max_tokens:50});
-  assert.equal(duration,4500);
+  assert.equal(duration,30000);
   timeoutCallback();
   await assert.rejects(response,/timed out/);
   release({response:'Late answer'});
