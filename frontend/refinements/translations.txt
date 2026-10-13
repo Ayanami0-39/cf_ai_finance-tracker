@@ -440,3 +440,11 @@ CSV 解析失败|Couldn't read this CSV
 响应较慢，可长按消息重新发送|Taking longer. Long press to resend
 请求未完成，请检查记录后重试|Request incomplete. Check your records before retrying
 请检查记录后再记账|Check Activity before adding another entry
+修改记录|Edit entry
+删除记录|Delete entry
+恢复记录|Restore entry
+同步记录|Sync entry
+修改已存于此设备，将在后台同步|Changes saved on this device. Syncing in the background.
+同步失败3次，已暂停|Sync failed 3 times. Paused.
+同步失败3次，操作已保存在此设备，请检查网络或权限后重试|Sync failed 3 times. Your action is saved on this device. Check your connection or permissions, then retry.
+未能保存撤销操作，请重试|Could not save Undo on this device. Please retry.

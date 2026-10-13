@@ -59,7 +59,7 @@ function FiscusSyncStatus({ online, pending, account, scopeId }) {
       v.jsx(FiscusPendingEntries, { account, scopeId }),
       v.jsx('button', {
         type: 'button', disabled: !online || busy, 'aria-label': busy ? '同步中…' : '重试同步',
-        onClick: () => window.dispatchEvent(new Event('fiscus:retry-sync')),
+        onClick: () => window.dispatchEvent(new Event('fiscus:retry-failed')),
         children: '↻',
       }),
     ],

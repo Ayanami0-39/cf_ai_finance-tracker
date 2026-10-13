@@ -400,3 +400,6 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI'
 .fiscus-app .fiscus-record-menu .fiscus-menu-item-destructive { color: hsl(var(--destructive)); }
 .fiscus-app .fiscus-record-menu .fiscus-menu-item:hover, .fiscus-app .fiscus-record-menu .fiscus-menu-item:active { background: hsl(var(--muted)); }
 .fiscus-app .fiscus-record-menu .fiscus-menu-item-destructive:hover, .fiscus-app .fiscus-record-menu .fiscus-menu-item-destructive:active { background: hsl(var(--destructive) / .07); }
+
+.fiscus-sync-failure { padding: 10px; border-radius: 12px; background: hsl(var(--destructive) / .06); color: hsl(var(--destructive)); font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
+.fiscus-sync-failure button { min-height: 44px; width: 100%; margin-top: 6px; text-align: left; font-weight: 600; }

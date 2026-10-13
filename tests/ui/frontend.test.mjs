@@ -283,6 +283,10 @@ for (const engine of [chromium, ...(process.env.TEST_WEBKIT ? [webkit] : [])]) {
         db.close(); return entries;
       });
     }
+    async function waitQueueEmpty(page) {
+      const deadline = Date.now() + 10000;
+      while ((await queue(page)).length) { assert.ok(Date.now() < deadline, 'queue did not finish'); await page.waitForTimeout(50); }
+    }
     const pending = (id, scopeId = 'user_tester') => ({ id, clientMutationId: 'mutation-' + id, input: 'Lunch 30', username: 'tester', scopeId, queuedAt: 1 });
     await t.test('failed sync retries on focus without another online event, retaining its mutation key', async () => {
       const page = await open(); const requests = [];
@@ -295,7 +299,7 @@ for (const engine of [chromium, ...(process.env.TEST_WEBKIT ? [webkit] : [])]) {
       await page.reload(); await page.waitForFunction(() => window.__fiscusSyncFlight === null);
       assert.equal(requests.length, 1); assert.equal((await queue(page)).length, 1);
       await page.evaluate(() => { window.dispatchEvent(new Event('focus')); window.dispatchEvent(new Event('online')); });
-      await page.waitForFunction(() => document.body.textContent.includes('离线记账已同步'));
+      await waitQueueEmpty(page);
       assert.equal(requests.length, 2); assert.equal((await queue(page)).length, 0);
       assert.equal(requests[0].idempotencyKey, requests[1].idempotencyKey);
       await page.close();
@@ -323,7 +327,7 @@ for (const engine of [chromium, ...(process.env.TEST_WEBKIT ? [webkit] : [])]) {
       assert.equal(entries[0].clientMutationId, requests[0].idempotencyKey);
       assert.ok(requests[0].idempotencyKey.length >= 8);
       await page.evaluate(() => window.dispatchEvent(new Event('focus')));
-      await page.waitForFunction(() => document.body.textContent.includes('离线记账已同步'));
+      await page.waitForFunction(() => document.body.textContent.includes('后台同步成功'));
       assert.equal(requests.length, 2); assert.equal(requests[0].idempotencyKey, requests[1].idempotencyKey);
       assert.equal((await queue(page)).length, 0); await page.close();
     });
@@ -458,7 +462,7 @@ for (const engine of [chromium, ...(process.env.TEST_WEBKIT ? [webkit] : [])]) {
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth), 320);
       await page.close();
     });
-    await t.test('delete confirmation fits narrow records, cancels safely and restores rejected deletions', async () => {
+    await t.test('delete confirmation stays compact and pauses a durable action after three failures', async () => {
       const page = await open(320, 568, { language: 'en', expenses: [chartEntries[0]] });
       let deletes = 0;
       await page.route('**/api/expenses/**', async route => {
@@ -484,9 +488,16 @@ for (const engine of [chromium, ...(process.env.TEST_WEBKIT ? [webkit] : [])]) {
       await row.locator('.fiscus-record-menu > summary').click();
       await row.getByRole('button', { name: 'Delete entry', exact: true }).click();
       await row.getByRole('button', { name: 'Confirm deletion', exact: true }).click();
-      await page.getByText("Couldn't delete. Restoring your list.", { exact: true }).waitFor();
-      await row.getByRole('button', { name: 'Edit entry', exact: true }).waitFor();
-      assert.equal(deletes, 1);
+      await page.getByText('Sync failed 3 times. Your action is saved on this device. Check your connection or permissions, then retry.', { exact: true }).filter({ visible: true }).first().waitFor({ timeout: 15000 });
+      assert.equal(deletes, 3);
+      assert.equal(await page.locator('.fiscus-mobile .fiscus-entry-row').count(), 0);
+      const pendingDelete = await queue(page);
+      assert.equal(pendingDelete.length, 1);
+      assert.equal(pendingDelete[0].failures, 3);
+      assert.equal(pendingDelete[0].syncState, 'failed');
+      await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+      await page.waitForTimeout(100);
+      assert.equal(deletes, 3, 'paused actions do not retry on focus');
       await page.close();
     });
     await t.test('calendar dates keep their recorded day in western time zones and reduced motion is respected', async () => {
@@ -647,7 +658,7 @@ for (const engine of [chromium, ...(process.env.TEST_WEBKIT ? [webkit] : [])]) {
       await status.click();
       await page.getByText('Entries are saved on this device. Keep website data until they sync. For entries from another ledger, switch back to that ledger.', { exact: true }).filter({ visible: true }).waitFor();
       await page.getByRole('button', { name: 'Retry sync', exact: true }).filter({ visible: true }).click();
-      await page.waitForFunction(() => document.body.textContent.includes('离线记账已同步'));
+      await page.waitForFunction(() => document.body.textContent.includes('后台同步成功'));
       assert.equal(requests.length, 2);
       assert.equal(requests[0].idempotencyKey, requests[1].idempotencyKey);
       assert.equal((await queue(page)).length, 0);
@@ -760,7 +771,7 @@ for (const engine of [chromium, ...(process.env.TEST_WEBKIT ? [webkit] : [])]) {
       assert.equal(await page.locator('.fiscus-mobile .fiscus-entry-row').count(), 2);
       await page.close();
     });
-    await t.test('Undo restores the original record and offers retry after a rejected restore', async () => {
+    await t.test('Undo closes immediately and retries a queued restore after a transient failure', async () => {
       const page = await open(320, 568, { language: 'en', expenses });
       let deleted = false, restores = 0;
       await page.route('**/api/expenses/**', route => {
@@ -780,12 +791,58 @@ for (const engine of [chromium, ...(process.env.TEST_WEBKIT ? [webkit] : [])]) {
       await row.getByRole('button', { name: 'Delete entry', exact: true }).click();
       await row.getByRole('button', { name: 'Confirm deletion', exact: true }).click();
       const undo = page.locator('.fiscus-undo-toast');
+      const syncedRestore = page.waitForResponse(response => response.url().includes('/entry/restore?scope=user_tester') && response.status() === 200);
       await undo.getByRole('button', { name: 'Undo', exact: true }).click();
-      await undo.getByRole('button', { name: 'Retry Undo', exact: true }).click();
       await undo.waitFor({ state: 'detached' });
       await page.locator('.fiscus-mobile .fiscus-entry-row').getByText('保存', { exact: true }).waitFor();
+      await syncedRestore;
       assert.equal(restores, 2);
       assert.equal(await page.locator('.fiscus-mobile .fiscus-entry-row').count(), 1);
+      await page.close();
+    });
+    await t.test('record edit closes before the server responds and pending edits survive an offline reload', async () => {
+      const page = await open(320, 568, { language: 'en' });
+      let release;
+      const gate = new Promise(resolve => { release = resolve; });
+      let patches = 0;
+      await page.route('**/api/expenses/**', async route => {
+        if (route.request().method() === 'PATCH') { patches++; await gate; return route.fulfill({ json: { success: true, expense: { ...expenses[0], amount: 55 } } }).catch(()=>{}); }
+        return route.fulfill({ json: { success: true, expenses } });
+      });
+      await page.getByRole('button', { name: 'Activity', exact: true }).click();
+      await page.locator('.fiscus-mobile .fiscus-entry-row').getByRole('button', { name: 'Edit entry', exact: true }).click();
+      const dialog = page.getByRole('dialog', { name: 'Edit transaction' });
+      await dialog.locator('input').first().fill('55');
+      await dialog.getByRole('button', { name: 'Save', exact: true }).click();
+      await dialog.waitFor({ state: 'detached' });
+      await page.locator('.fiscus-mobile .fiscus-entry-amount').getByText('-¥55.00', { exact: true }).waitFor();
+      const saved = await queue(page);
+      assert.equal(saved[0].kind, 'mutation'); assert.equal(saved[0].patch.amount, 55);
+      await page.getByRole('button', { name: 'Chat', exact: true }).click();
+      await page.locator('.fiscus-mobile .fiscus-composer input').fill('I can keep using the app');
+      await page.addInitScript(() => Object.defineProperty(navigator, 'onLine', { configurable: true, get: () => false }));
+      await page.reload(); release();
+      await page.getByRole('button', { name: 'Activity', exact: true }).click();
+      await page.locator('.fiscus-mobile .fiscus-entry-amount').getByText('-¥55.00', { exact: true }).waitFor();
+      assert.equal((await queue(page))[0].clientMutationId, saved[0].clientMutationId);
+      assert.equal(patches, 1);
+      await page.close();
+    });
+    await t.test('a record edit stays open and never reaches the server if the device queue cannot save', async () => {
+      const page = await open(320, 568, { language: 'en' });
+      let patches = 0;
+      await page.route('**/api/expenses/**', route => { if (route.request().method() === 'PATCH') patches++; return route.fulfill({ json: { success: true, expenses } }); });
+      await page.getByRole('button', { name: 'Activity', exact: true }).click();
+      await page.locator('.fiscus-mobile .fiscus-entry-row').getByRole('button', { name: 'Edit entry', exact: true }).click();
+      const dialog = page.getByRole('dialog', { name: 'Edit transaction' });
+      await dialog.locator('input').first().fill('99');
+      await page.evaluate(() => { const transaction = IDBDatabase.prototype.transaction; IDBDatabase.prototype.transaction = function(stores, mode, ...args) { if (mode === 'readwrite') throw new DOMException('Device storage full', 'QuotaExceededError'); return transaction.call(this, stores, mode, ...args); }; });
+      await dialog.getByRole('button', { name: 'Save', exact: true }).click();
+      await dialog.getByText("Couldn't save. Keep the form open and try again.", { exact: true }).waitFor();
+      assert.equal(await dialog.locator('input').first().inputValue(), '99');
+      assert.equal(patches, 0);
+      await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
+      await page.locator('.fiscus-mobile .fiscus-entry-amount').getByText('-¥30.00', { exact: true }).waitFor();
       await page.close();
     });
     await t.test('long-press resend aborts a pending reply, preserves drafts and reuses its command ID', async () => {

@@ -21,6 +21,14 @@ const FiscusLedger = (() => {
     try { await loading; } finally { loading = null; if (dirty) { dirty = false; refresh(); } }
   }
   window.addEventListener('fiscus:queue-changed', refresh);
+  let retryTimer, lastQueuedAt = 0;
+  const wake = delay => { clearTimeout(retryTimer); retryTimer = setTimeout(() => { if (window.__fiscusSyncFlight) window.__fiscusSyncFlight.then(() => wake(0), () => wake(2000)); else window.dispatchEvent(new Event('fiscus:retry-sync')); }, delay); };
+  const actionLabel = action => ({ edit: '修改记录', delete: '删除记录', restore: '恢复记录' })[action] || '同步记录';
+  window.addEventListener('fiscus:retry-failed', async () => {
+    const context = Yi;
+    for (const entry of await readQueue()) if (entry.username === context?.username && entry.scopeId === context?.scopeId && ['failed', 'retry'].includes(entry.syncState)) await kM({ ...entry, failures: 0, nextAttemptAt: 0, syncState: 'saved' });
+    wake(0);
+  });
   const filterKey = scope => 'fiscus:activity-filters:v1:' + encodeURIComponent(Jo()?.username || '') + ':' + encodeURIComponent(scope || '');
   const loadFilters = scope => {
     const defaults = { category: 'all', member: 'all', query: '', month: 'all' };
@@ -42,9 +50,40 @@ const FiscusLedger = (() => {
       const expense = result.expense || result.data?.expense;
       const receipt = { ...entry, syncState: 'synced', completedAt: Date.now() };
       publish({ receipts: [...snapshot.receipts.filter(item => item.completedAt > Date.now() - 300000 && item.id !== entry.id), receipt].slice(-5) });
-      window.dispatchEvent(new CustomEvent('fiscus:ledger-changed', { detail: { scopeId: context.scopeId, username: context.username, expense } }));
+      window.dispatchEvent(new CustomEvent('fiscus:ledger-changed', { detail: { scopeId: context.scopeId, username: context.username, expense, entry } }));
     },
-    async retry(entry) { try { await kM({ ...entry, syncState: 'retry', lastAttemptAt: Date.now() }); } catch { await refresh(); } },
+    async retry(entry) {
+      const failures = (entry.failures || 0) + 1, paused = failures >= 3;
+      try {
+        await kM({ ...entry, failures, nextAttemptAt: paused ? 0 : Date.now() + 1000 * 2 ** failures, syncState: paused ? 'failed' : 'retry', lastAttemptAt: Date.now() });
+        if (paused) window.dispatchEvent(new CustomEvent('fiscus:sync-failed', { detail: { ...entry, failures } }));
+        else wake(1000 * 2 ** failures);
+      } catch { await refresh(); }
+    },
+    mergeExpenses(expenses, scopeId, username) {
+      const map = new Map(expenses.map(expense => [expense.id, expense]));
+      for (const entry of snapshot.entries) if (entry.kind === 'mutation' && entry.scopeId === scopeId && entry.username === username) {
+        if (entry.action === 'delete') map.delete(entry.expenseId);
+        else if (entry.action === 'restore' && (map.has(entry.expenseId) || entry.expense)) map.set(entry.expenseId, { ...(map.get(entry.expenseId) || entry.expense), ...entry.patch });
+        else if (map.has(entry.expenseId)) map.set(entry.expenseId, { ...map.get(entry.expenseId), ...entry.patch });
+      }
+      return [...map.values()];
+    },
+    async saveMutation(action, scopeId, expenseId, patch, expense) {
+      const account = Jo();
+      if (!account?.username || !scopeId || !expenseId) throw new Error('无法确定账本，请重试');
+      const entry = { id: crypto.randomUUID(), clientMutationId: crypto.randomUUID(), kind: 'mutation', action, expenseId, patch, expense, input: window.FiscusUI.translate(actionLabel(action)) + ((expense?.merchant || patch?.merchant) ? ' · ' + (expense?.merchant || patch.merchant) : ''), username: account.username, scopeId, queuedAt: lastQueuedAt = Math.max(Date.now(), lastQueuedAt + 1), syncState: 'saved', failures: 0 };
+      await kM(entry);
+      await refresh();
+      wake(0);
+      return { success: true, pending: true };
+    },
+    async sendMutation(entry) {
+      const scope = encodeURIComponent(entry.scopeId), id = encodeURIComponent(entry.expenseId);
+      return entry.action === 'restore'
+        ? ot(`/recycle-bin/${id}/restore?scope=${scope}`, { ...Xt('POST', {}), timeoutMs: 15000 })
+        : ot(`/expenses/${scope}/${id}`, { ...(entry.action === 'delete' ? { method: 'DELETE' } : Xt('PATCH', entry.patch)), timeoutMs: 15000 });
+    },
     async saveManual(expense, scopeId) {
       const account = Jo();
       if (!account?.username || !scopeId) throw new Error('无法确定账本，请重新打开表单');
@@ -80,8 +119,9 @@ function FiscusPendingEntries({ account, scopeId }) {
         v.jsx('p', { className: 'fiscus-pending-name', 'data-fiscus-user-content': 'field', children: entry.input }),
         entry.kind === 'manual' && v.jsx('p', { className: 'fiscus-pending-detail', children: `${entry.expense.date} · ${entry.expense.type === 'income' ? '+' : '-'}¥${Number(entry.expense.amount).toFixed(2)}` }),
       ] }),
-      v.jsx('span', { className: 'fiscus-entry-sync-status ' + (entry.syncState === 'retry' ? 'needs-retry' : ''), children: t(entry.syncState === 'syncing' ? '正在同步' : entry.syncState === 'retry' ? '需要重试' : '已存于此设备') }),
+      v.jsx('span', { className: 'fiscus-entry-sync-status ' + (['retry', 'failed'].includes(entry.syncState) ? 'needs-retry' : ''), children: t(entry.syncState === 'failed' ? '同步失败3次，已暂停' : entry.syncState === 'syncing' ? '正在同步' : entry.syncState === 'retry' ? '需要重试' : '已存于此设备') }),
     ] }, entry.id)),
+    entries.some(entry => entry.syncState === 'failed') && v.jsxs('div', { className: 'fiscus-sync-failure', role: 'alert', children: [v.jsx('p', { children: t('同步失败3次，操作已保存在此设备，请检查网络或权限后重试') }), v.jsx('button', { type: 'button', onClick: () => window.dispatchEvent(new Event('fiscus:retry-failed')), children: t('重试同步') })] }),
     otherLedgers > 0 && v.jsx('p', { className: 'fiscus-pending-detail', children: t('其他账本的待同步记录已保留，请切换回对应账本') }),
   ] });
 }
