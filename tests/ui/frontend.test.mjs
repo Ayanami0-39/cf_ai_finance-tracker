@@ -569,6 +569,13 @@ for (const engine of [chromium, ...(process.env.TEST_WEBKIT ? [webkit] : [])]) {
       const row = page.locator('.fiscus-mobile .fiscus-entry-row').first();
       await row.locator('.fiscus-record-menu > summary').click();
       await row.getByRole('button', { name: 'Delete entry', exact: true }).waitFor();
+      const recordPanel = row.locator('.fiscus-menu-panel');
+      const recordBounds = await recordPanel.boundingBox();
+      const deleteStyle = await row.getByRole('button', { name: 'Delete entry', exact: true }).evaluate(element => ({ width: element.clientWidth, height: element.clientHeight, scroll: element.scrollWidth, color: getComputedStyle(element).color }));
+      assert.ok(deleteStyle.width >= 180 && deleteStyle.height >= 48, JSON.stringify(deleteStyle));
+      assert.ok(deleteStyle.scroll <= deleteStyle.width + 1);
+      assert.ok(recordBounds.x >= 12 && recordBounds.x + recordBounds.width <= 308 && recordBounds.y + recordBounds.height <= 556);
+      if (process.env.UI_SCREENSHOT_DIR) await page.screenshot({ path: `${process.env.UI_SCREENSHOT_DIR}/${engine.name()}-record-menu-320.png` });
       await page.locator('.fiscus-mobile-header').click({ position: { x: 4, y: 4 } });
       assert.equal(await row.locator('.fiscus-record-menu').getAttribute('open'), null);
       await row.getByRole('button', { name: 'Edit entry', exact: true }).click();

@@ -1,7 +1,7 @@
 /* Preserve the recovered handlers while presenting secondary actions by name. */
 function FiscusActionMenu({ children, label = '更多', compact = false }) {
   const details = T.useRef(null);
-  const [position, setPosition] = T.useState({});
+  const [position, setPosition] = T.useState({ visibility: 'hidden' });
   function actions(nodes) {
     return T.Children.toArray(nodes).flatMap(node => {
       if (!T.isValidElement(node)) return [];
@@ -9,13 +9,13 @@ function FiscusActionMenu({ children, label = '更多', compact = false }) {
       if (node.type !== 'button') return [node];
       const name = window.FiscusUI.translate(node.props['aria-label'] || node.props.title || '操作');
       return [T.cloneElement(node, {
-        className: 'fiscus-menu-item', title: undefined,
+        className: 'fiscus-menu-item' + (compact && /删除|delete/i.test(node.props['aria-label'] || node.props.title || '') ? ' fiscus-menu-item-destructive' : ''), title: undefined,
         onClick: event => {
           details.current.open = false;
           details.current.querySelector('summary')?.focus({ preventScroll: true });
           node.props.onClick?.(event);
         },
-      }, [node.props.children, v.jsx('span', { children: name }, 'label')])];
+      }, [v.jsx('span', { className: 'fiscus-menu-item-icon', 'aria-hidden': true, children: node.props.children }, 'icon'), v.jsx('span', { className: 'fiscus-menu-item-label', children: name }, 'label')])];
     });
   }
   return v.jsxs('details', {
@@ -24,8 +24,11 @@ function FiscusActionMenu({ children, label = '更多', compact = false }) {
       if (event.currentTarget.open) {
         const rect = event.currentTarget.querySelector('summary').getBoundingClientRect();
         const panel = event.currentTarget.querySelector('.fiscus-menu-panel');
-        const height = Math.min(panel.scrollHeight, innerHeight - 24);
-        setPosition({ left: Math.max(12, Math.min(rect.right - 220, innerWidth - 232)), top: Math.max(12, Math.min(rect.bottom + 6, innerHeight - height - 12)) });
+        const viewport = window.visualViewport, viewportTop = viewport?.offsetTop || 0, viewportHeight = viewport?.height || innerHeight;
+        const width = panel.getBoundingClientRect().width, height = Math.min(panel.scrollHeight, viewportHeight - 24);
+        const below = rect.bottom + 8, bottom = viewportTop + viewportHeight - 12;
+        const top = below + height <= bottom ? below : rect.top - height - 8;
+        setPosition({ visibility: 'visible', left: Math.max(12, Math.min(rect.right - width, innerWidth - width - 12)), top: Math.max(viewportTop + 12, Math.min(top, bottom - height)) });
         for (const menu of document.querySelectorAll('.fiscus-action-menu[open]')) {
           if (menu !== event.currentTarget) menu.open = false;
         }

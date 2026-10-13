@@ -72,7 +72,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI'
 .fiscus-entry-meta { display: block; white-space: normal; overflow-wrap: anywhere; }
 .fiscus-entry-tools { grid-column: 3; grid-row: 1; display: flex; align-items: center; justify-content: flex-end; gap: 2px; }
 .fiscus-app .fiscus-entry-date { display: block; white-space: nowrap; font-size: 11.25px; line-height: 1.2; }
-.fiscus-app .fiscus-entry-row .fiscus-entry-tools button { min-height: 32px; height: 32px; min-width: 24px; width: 24px; padding: 0; }
+.fiscus-app .fiscus-entry-row .fiscus-entry-tools > div > button { min-height: 32px; height: 32px; min-width: 24px; width: 24px; padding: 0; }
 .fiscus-entry-tools > div { margin-right: 0; gap: 1px; }
 .fiscus-app .fiscus-entry-meta { font-size: 13.5px; line-height: 1.25; }
 .fiscus-entry-tools button svg { width: 18px; height: 18px; }
@@ -390,3 +390,13 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI'
 .fiscus-app .fiscus-message-menu > button { width: 100%; min-height: 44px; border-radius: 12px; text-align: left; padding: 10px; font-size: 15px; color: hsl(var(--primary)); }
 .fiscus-message-menu > button:hover { background: hsl(var(--muted)); }
 .fiscus-message-menu-hint { font-size: 12px; line-height: 1.5; color: hsl(var(--muted-foreground)); padding: 6px 10px 10px; overflow-wrap: anywhere; }
+
+/* Record popovers have their own sizing, separate from the compact row controls. */
+.fiscus-record-menu[open] > summary { background: hsl(var(--muted)); color: hsl(var(--foreground)); }
+.fiscus-record-menu > .fiscus-menu-panel { width: 204px; padding: 5px; border: 1px solid #e5e5ea; border-radius: 16px; box-shadow: 0 6px 18px #1c1c1e12, 0 18px 48px #1c1c1e18; }
+.fiscus-app .fiscus-record-menu .fiscus-menu-item { width: 100%; min-width: 0; min-height: 48px; height: auto; padding: 12px 14px; gap: 12px; justify-content: flex-start; font-size: 15px; font-weight: 500; line-height: 1.4; border: 0; border-radius: 11px; background: transparent; }
+.fiscus-menu-item-icon { display: inline-flex; align-items: center; justify-content: center; width: 20px; min-width: 20px; flex-shrink: 0; }
+.fiscus-menu-item-label { flex: 1; text-align: left; white-space: normal; }
+.fiscus-app .fiscus-record-menu .fiscus-menu-item-destructive { color: hsl(var(--destructive)); }
+.fiscus-app .fiscus-record-menu .fiscus-menu-item:hover, .fiscus-app .fiscus-record-menu .fiscus-menu-item:active { background: hsl(var(--muted)); }
+.fiscus-app .fiscus-record-menu .fiscus-menu-item-destructive:hover, .fiscus-app .fiscus-record-menu .fiscus-menu-item-destructive:active { background: hsl(var(--destructive) / .07); }
