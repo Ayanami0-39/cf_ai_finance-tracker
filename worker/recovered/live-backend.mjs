@@ -1735,12 +1735,15 @@ const INTENT_CONFIG = {
 };
 function detectFastIntent(input) {
   if (typeof input !== "string") return null;
+  if (/^(你好|您好|嗨|哈喽|帮助|怎么用|你能做什么|hello|hi|help)[!！。.\s]*$/i.test(input.trim())) return INTENTS.HELP;
   const question=/[?？]|(建议|应该|是否|能否|如何|怎么|should|could|can I|how do)/i.test(input);
   const explicitEntry=/(帮我记|请记|记一笔|记录这|please record|log this|record this)/i.test(input);
   if(question&&!explicitEntry&&/(支出|收入|钱|花|消费|买|工资|删除|记录|expense|income|spend|budget|money|delete|record|coffee|lunch)/i.test(input))return INTENTS.QUERY;
   if (/(删除|删掉|撤销|清除|订阅|每月|每个月|固定|定期|修改|改成|delete|remove|cancel|undo|subscription|recurring)/i.test(input)) return null;
+  if (!/[0-9一二三四五六七八九十百千万两]/.test(input) && /(?:本月|这个月|上月|今天|最近|本周).*(?:消费情况|收支|开销|账单|消费|支出|收入)/.test(input)) return INTENTS.QUERY;
   if (/(花了多少|多少钱|汇总|统计|总结|分析|建议|how much|what.*spent|show.*expense|total spending|summarize|spending advice)/i.test(input)) return INTENTS.QUERY;
   if (/[?？]|(如果|计划|打算|预算|能否|是否|应该|建议|how|why|should|could|will|can I)/i.test(input)) return null;
+  if (/^(?:(?:今天|昨天|前天)\s*)?(?:(?:帮我)?(?:记账|记一笔|记录|支出)\s*[:：]?\s*)?(?:午餐|晚餐|早餐|午饭|晚饭|咖啡|奶茶|打车|出租车|地铁|公交|房租|买菜|购物|买手表|买衣服)\s*(?:花了?|付了?|支付)?\s*[¥￥$]?\s*\d+(?:\.\d{1,2})?\s*(?:元|块|cny|usd|rmb)?[。.!！]?$/i.test(input.trim())) return INTENTS.ADD_EXPENSE;
   if (/^(coffee|lunch|dinner|breakfast|groceries|taxi|bus|train|rent|salary|奶茶|咖啡|午饭|早餐|晚饭|打车|出租车|地铁|房租|工资)\s*[:：]?\s*[¥￥$]?\s*\d+(?:\.\d{1,2})?\s*(?:元|块|cny|usd|rmb)?$/i.test(input.trim())) return INTENTS.ADD_EXPENSE;
   if (/(花了|买了|付了|消费了|到账|收入|工资|红包|奖励|spent|bought|paid|received|earned)/i.test(input) && /[0-9一二三四五六七八九十百千万两]/.test(input)) return INTENTS.ADD_EXPENSE;
   return null;
@@ -1772,7 +1775,9 @@ async function classifyIntent(AI, input) {
     const jsonMatch = text.match(/\{[\s\S]*?\}/);
     if (jsonMatch) {
       const parsed = JSON.parse(jsonMatch[0]);
-      const intent = parsed.intent;
+      const normalized = typeof parsed.intent === "string" ? parsed.intent.trim().toUpperCase().replace(/[ -]+/g, "_") : "";
+      const intent = Object.values(INTENTS).includes(normalized) ? normalized : INTENTS.UNKNOWN;
+      if (intent === INTENTS.UNKNOWN) return quickIntentDetection(input);
       if (intent === INTENTS.MANAGE_SUBSCRIPTION && REWARD_INCOME_HINT_RE.test(input) && !SUBSCRIPTION_HINT_RE.test(input) && quickIntentDetection(input) === INTENTS.ADD_EXPENSE) {
         console.warn("[classify-intent] subscription misroute corrected → ADD_EXPENSE. input:", input);
         return INTENTS.ADD_EXPENSE;
@@ -1786,6 +1791,8 @@ async function classifyIntent(AI, input) {
 const REWARD_INCOME_HINT_RE = /(红包|奖励|奖金|补贴|稿费|奖学金|中奖|佣金|分红|利息|劳务费|退税|报销|退款|到账|工资|薪水)/;
 const SUBSCRIPTION_HINT_RE = /(每月|每个月|月结|订阅|扣款|定期|固定|自动|recurring|subscription|续费|改成|涨价|变更|修改)/i;
 function quickIntentDetection(input) {
+  const fast = detectFastIntent(input);
+  if (fast) return fast;
   if (/[?？]|(如果|计划|打算|能否|是否|应该|should|could|will|can I)/i.test(input)) return INTENTS.QUERY;
   const lower = input.toLowerCase();
   if (/(?:delete|remove|cancel|undo|erase|get rid of)/.test(lower)) {
@@ -4142,7 +4149,9 @@ async function handleVoiceCommand(c) {
       return c.json({
         success: true,
         safeToRetry: true,
-        message: "我没太理解你的意思。试试说「我花了 50 块买咖啡」或「这个月花了多少钱」。 Or try: 'I spent $X on something'."
+        message: /[\u4e00-\u9fff]/.test(input)
+          ? "你想记一笔收支，还是查询账单？记账请告诉我项目和金额，例如「午餐25」；查询可以说「本月收支」。这条消息没有新增或删除任何记录。"
+          : "Would you like to record a transaction or review your finances? For an entry, include the item and amount, such as 'Coffee 25'. For a summary, ask 'How much did I spend this month?' This message did not add or delete any records."
       });
     }
   } catch {
@@ -5797,4 +5806,4 @@ export { app as liveApp, d1GetExpenses, d1UpdateExpense, d1SoftDeleteExpense, d1
   d1ImportExpenses, d1AddExpense, writeDoStorageBackup, readDoStorageBackup,
   deleteDoBackupKeys, createSession, verifySession, revokeSession };
 
-export {executeVoiceCommand, detectFastIntent};
+export {executeVoiceCommand, detectFastIntent, classifyIntent};

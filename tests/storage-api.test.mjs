@@ -437,3 +437,38 @@ test('a failed command receipt is reconciled with saved data without rerunning i
   assert.equal(result.success,true);assert.equal(result.data.expense.id,saved.expense.id);assert.equal(calls,0);
   assert.equal((await db.prepare('SELECT COUNT(*) AS count FROM expenses').first()).count,1);
 });
+
+test('Chinese shorthand and financial summaries route without a classifier call', async () => {
+  const {detectFastIntent,classifyIntent}=await loadWorker('worker/recovered/live-backend.mjs');
+  const forbidden={run(){throw new Error('Classification should be skipped');}};
+  for(const input of ['午餐25','今天打车45','记账买手表5900','午饭花30','昨天奶茶18元','今天收入300']) {
+    assert.equal(detectFastIntent(input),'ADD_EXPENSE',input);
+    assert.equal(await classifyIntent(forbidden,input),'ADD_EXPENSE',input);
+  }
+  for(const input of ['本月消费情况','最近收支','这个月账单']) assert.equal(await classifyIntent(forbidden,input),'QUERY',input);
+  for(const input of ['你好','帮助','hello']) assert.equal(await classifyIntent(forbidden,input),'HELP',input);
+  for(const input of ['预算午餐25','计划买手表5900','删除午餐25','每月房租2000','2026年10月13日']) assert.equal(detectFastIntent(input),null,input);
+});
+
+test('intent names are normalized and invalid or unknown classifier results use safe fallback', async () => {
+  const {classifyIntent}=await loadWorker('worker/recovered/live-backend.mjs');
+  const ai=intent=>({async run(){return {response:JSON.stringify({intent})};}});
+  assert.equal(await classifyIntent({async run(){throw new Error('AI response timed out');}},'查一下账本'),'QUERY');
+  assert.equal(await classifyIntent({async run(){return {response:'{broken JSON'};}},'查一下账本'),'QUERY');
+  assert.equal(await classifyIntent(ai(' query '),'我的餐饮开销怎么样'),'QUERY');
+  assert.equal(await classifyIntent(ai('delete expense'),'删除上一笔'),'DELETE_EXPENSE');
+  for(const intent of ['UNKNOWN','nonsense',null,{}]) {
+    assert.equal(await classifyIntent(ai(intent),'查一下账本'),'QUERY');
+    assert.equal(await classifyIntent(ai(intent),'随便聊聊'),'UNKNOWN');
+  }
+});
+
+test('ambiguous messages receive useful clarification without writing financial records', async t => {
+  const {env,db,request}=await manualSession(t);
+  env.AI={async run(){return {response:'{"intent":"nonsense"}'};}};
+  const result=await (await request('/api/voice-command','POST',{userId:'user_manual',input:'随便聊聊'})).json();
+  assert.equal(result.success,true);
+  assert.match(result.message,/项目和金额/);
+  assert.doesNotMatch(result.message,/我没太理解/);
+  assert.equal((await db.prepare('SELECT COUNT(*) AS count FROM expenses').first()).count,0);
+});
