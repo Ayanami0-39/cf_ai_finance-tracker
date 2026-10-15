@@ -1,5 +1,6 @@
 /* A shared language and viewport bridge for the recovered React application. */
 (() => {
+  try { sessionStorage.removeItem('fiscus-auth-renewed'); } catch { /* Login renewal still works when storage is restricted. */ }
   const dictionary = __FISCUS_TRANSLATIONS__;
   const root = document.documentElement;
   const subscribers = new Set();

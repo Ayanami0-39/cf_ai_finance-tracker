@@ -30,13 +30,15 @@ async function fixture(t, engine) {
     } catch { response.writeHead(404); response.end(); }
   });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
-  const browser = await engine.launch(engine === chromium && existsSync('/usr/bin/chromium') ? { executablePath: '/usr/bin/chromium', args: ['--no-sandbox'] } : {});
-  t.after(async () => { await browser.close(); await new Promise(resolve => server.close(resolve)); });
+  let browser;
+  t.after(async () => { await browser?.close(); await new Promise(resolve => server.close(resolve)); });
+  browser = await engine.launch(engine === chromium && existsSync('/usr/bin/chromium') ? { executablePath: '/usr/bin/chromium', args: ['--no-sandbox'] } : {});
   async function page(width = 390, height = 844, options = {}) {
     const selectedAccount = options.account || account;
     const page = await browser.newPage({ viewport: { width, height }, isMobile: width < 768, hasTouch: width < 768, timezoneId: options.timezone || 'UTC', reducedMotion: options.reducedMotion || 'no-preference' });
+    page.startupErrors = []; page.on('pageerror', error => page.startupErrors.push(error.message));
     await page.addInitScript(({ account, options }) => {
-      localStorage.setItem('account_info', JSON.stringify(account)); localStorage.setItem('auth_token', 'synthetic');
+      if (!options.fresh) { localStorage.setItem('account_info', JSON.stringify(account)); localStorage.setItem('auth_token', 'synthetic'); }
       if (options.cache && !localStorage.getItem('app_bootstrap_snapshot')) localStorage.setItem('app_bootstrap_snapshot', JSON.stringify(options.cache));
       if (!localStorage.getItem('ui-lang')) localStorage.setItem('ui-lang', options.language || 'zh');
       if (options.blockStorage) Storage.prototype.setItem = () => { throw new DOMException('Quota exceeded', 'QuotaExceededError'); };
@@ -61,6 +63,7 @@ async function fixture(t, engine) {
       await page.route('**/api/expenses/**', route => route.fulfill({ json: { success: true, expenses: options.expenses || expenses } }));
     }
     await page.goto('http://127.0.0.1:' + server.address().port);
+    if (options.fresh) { await page.locator('input[type="password"]').first().waitFor(); return page; }
     await page.locator('.fiscus-mobile-header, .fiscus-desktop').filter({ visible: true }).first().waitFor();
     await page.waitForFunction(() => document.body.textContent.includes('Keep my original message'));
     return page;
@@ -71,6 +74,13 @@ async function fixture(t, engine) {
 for (const engine of [chromium, ...(process.env.TEST_WEBKIT ? [webkit] : [])]) {
   test(engine.name() + ': responsive layout, keyboard, localization and live feature parity', async t => {
     const { page: open } = await fixture(t, engine);
+    await t.test('a fresh browser renders account sign-in without startup errors', async () => {
+      const page = await open(390, 844, { fresh: true });
+      await page.waitForTimeout(100);
+      assert.deepEqual(page.startupErrors, []);
+      assert.ok(await page.locator('input[type="password"]').first().isVisible());
+      await page.close();
+    });
     const longSource = 'Full salary source with a long company name · 完整工资来源';
     const chartEntries = [
       { ...expenses[0], amount: 12345678.91, category: 'Food & Dining', merchant: 'Complete merchant name beyond ten characters', byId: 'tester' },

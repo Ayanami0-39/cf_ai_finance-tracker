@@ -2413,6 +2413,8 @@ button:disabled{opacity:.55;cursor:wait}
 </div>
 <script>
 var f=document.getElementById('f'),p=document.getElementById('p'),b=document.getElementById('b'),e=document.getElementById('e');
+// A fresh navigation cannot send the localStorage bearer token. Renew its cookie here.
+try{var saved=localStorage.getItem('auth_token');if(saved){fetch('/auth',{credentials:'same-origin',headers:{Authorization:'Bearer '+saved}}).then(function(r){if(r.ok){try{if(sessionStorage.getItem('fiscus-auth-renewed')==='1'){e.textContent='请允许此网站使用 Cookie 后重新打开 / Please allow cookies for this site.';return}sessionStorage.setItem('fiscus-auth-renewed','1')}catch(_){return}location.reload()}}).catch(function(){})}}catch(_){}
 f.addEventListener('submit',function(ev){
 ev.preventDefault();
 var v=p.value;
@@ -2420,7 +2422,7 @@ if(!v)return;
 b.disabled=true;e.textContent='';
 fetch('/auth',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:v})}).then(function(r){
 return r.json().then(function(j){return{ok:r.ok,j:j}})}).then(function(x){
-if(x.ok){location.reload()}
+if(x.ok){try{localStorage.setItem('auth_token',x.j.token||'');sessionStorage.removeItem('fiscus-auth-renewed')}catch(_){}location.reload()}
 else{e.textContent=(x.j&&x.j.configured===false)?'服务器尚未配置 AUTH_PASSWORD（运行 wrangler secret put AUTH_PASSWORD）':'密码不正确，请重试';b.disabled=false}
 }).catch(function(){e.textContent='网络错误，请重试';b.disabled=false})});
 <\/script>
@@ -3377,7 +3379,7 @@ app.use("/*", async (c, next) => {
   }
   const expected = await deriveToken(password);
   if (!verifyRequest(c.req.raw, expected)) {
-    if (c.req.header("Sec-Fetch-Mode") === "navigate") {
+    if (!pathname.startsWith("/api/") && ["GET", "HEAD"].includes(c.req.method) && (pathname === "/" || c.req.header("Sec-Fetch-Mode") === "navigate" || /(?:^|,)\s*text\/html(?:[;,]|$)/i.test(c.req.header("Accept") || ""))) {
       return loginPageResponse();
     }
     return new Response(

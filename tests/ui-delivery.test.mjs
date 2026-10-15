@@ -26,3 +26,24 @@ test('refined frontend keeps authentication, security headers and immutable vers
   const recovery = await worker.fetch(new Request('https://test.invalid/api/admin/storage-migration/assets?path=/'), env, {});
   assert.equal(recovery.status, 503);
 });
+
+test('fresh HTML navigations work without Fetch Metadata while APIs and assets stay protected', async () => {
+  const env = { AUTH_PASSWORD: 'synthetic-access', FINANCE_MEMORY: {}, ASSETS: { fetch: async () => { throw new Error('Unauthenticated requests must not reach assets'); } } };
+  for (const headers of [{}, { Accept: 'text/html,application/xhtml+xml' }, { 'Sec-Fetch-Mode': 'navigate' }]) {
+    const response = await worker.fetch(new Request('https://test.invalid/', { headers }), env, {});
+    assert.equal(response.status, 200);
+    assert.match(response.headers.get('Content-Type'), /text\/html/);
+    const html = await response.text();
+    assert.match(html, /id="p" type="password"/);
+    assert.match(html, /localStorage.getItem\('auth_token'\)/);
+    assert.match(html, /fiscus-auth-renewed/);
+    assert.equal(response.headers.get('Cache-Control'), 'no-store');
+  }
+  for (const path of ['/api/account/me', '/api/expenses/private', '/ui/unknown/index.js']) {
+    const response = await worker.fetch(new Request('https://test.invalid' + path, { headers: { Accept: 'application/json' } }), env, {});
+    assert.equal(response.status, 401);
+    assert.match(response.headers.get('Content-Type'), /application\/json/);
+  }
+  const apiNavigation = await worker.fetch(new Request('https://test.invalid/api/account/me', { headers: { 'Sec-Fetch-Mode': 'navigate', Accept: 'text/html' } }), env, {});
+  assert.equal(apiNavigation.status, 401);
+});
